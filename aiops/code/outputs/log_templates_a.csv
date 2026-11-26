@@ -1,0 +1,158 @@
+﻿service,level,template,count,ratio
+redis,ERROR,OOM command not allowed when used memory > maxmemory,2558,0.06395
+redis,ERROR,MISCONF Redis is configured to save RDB snapshots,2409,0.060225
+redis,WARN,memory usage high used=<ID>,2402,0.06005
+redis,INFO,client connected addr=<IP>,2398,0.05995
+redis,INFO,background save completed keys=<ID>,2332,0.0583
+mysql,ERROR,too many connections active=<ID> max=<ID>,1830,0.04575
+mysql,INFO,connection established threads=<ID>,1696,0.0424
+mysql,WARN,slow query cost=<ID> rows=<ID>,1680,0.042
+mysql,ERROR,"deadlock found, transaction rolled back",1665,0.041625
+mysql,INFO,slow query log disabled,1654,0.04135
+product,WARN,slow query detected sql=select_product cost=<ID>,842,0.02105
+product,ERROR,mysql connection pool exhausted active=<ID>,831,0.020775
+product,ERROR,OOM killed worker pid=<ID>,793,0.019825
+product,INFO,cache hit ratio=<ID>.<ID>,766,0.01915
+auth,WARN,token refresh failed retry=<ID>,479,0.011975
+auth,INFO,token validated user=<ID> cost=<ID>,473,0.011825
+auth,ERROR,invalid signature from client=<IP>,447,0.011175
+auth,ERROR,redis command timeout key=auth:<ID> cost=<ID>,435,0.010875
+gateway,INFO,GET /api/<ID>/<ID> status=<ID> cost=<ID>,410,0.01025
+gateway,INFO,POST /api/<ID>/<ID> status=<ID> cost=<ID>,383,0.009575
+search,ERROR,"es cluster red, shard unassigned index=products",375,0.009375
+search,ERROR,search timeout after <ID>,351,0.008775
+search,INFO,es scroll id=<ID> batch=<ID>,342,0.00855
+search,WARN,es query slow cost=<ID> index=products,324,0.0081
+cart,INFO,cart merged uid=<ID> items=<ID>,301,0.007525
+cart,ERROR,redis cluster slot moved retry=<ID>,300,0.0075
+cart,ERROR,"cart service unavailable, fallback to local cache",299,0.007475
+product,INFO,query product list category=<ID> size=<ID>,281,0.007025
+recommend,ERROR,recommend timeout fallback to hot list,260,0.0065
+recommend,WARN,feature cache miss ratio=<ID>.<ID>,259,0.006475
+recommend,INFO,model inference batch=<ID>,244,0.0061
+order,ERROR,duplicate submit detected order_id=<ID>,243,0.006075
+inventory,ERROR,inventory service health check failed,242,0.00605
+recommend,ERROR,"model server OOM, reloading model",229,0.005725
+order,INFO,order confirmed order_id=<ID> cost=<ID>,227,0.005675
+order,ERROR,create order failed: inventory lock timeout order_id=<ID>,225,0.005625
+recommend,INFO,recommend list uid=<ID> size=<ID> cost=<ID>,221,0.005525
+order,INFO,order created order_id=<ID> amount=<ID>,203,0.005075
+auth,INFO,user login uid=<ID> channel=<ID>,195,0.004875
+order,WARN,order retry due to downstream timeout order_id=<ID>,192,0.0048
+payment,ERROR,payment failed trade_no=<ID> code=<ID>,174,0.00435
+payment,ERROR,"channel unavailable, circuit breaker open",169,0.004225
+payment,INFO,payment callback received trade_no=<ID>,159,0.003975
+payment,WARN,payment gateway latency high cost=<ID>,154,0.00385
+search,INFO,search query=<ID> hits=<ID> cost=<ID>,141,0.003525
+gateway,INFO,GET /api/<ID>/coupon status=<ID> cost=<ID>,140,0.0035
+cart,INFO,cart add sku=<ID> qty=<ID>,135,0.003375
+gateway,INFO,GET /api/<ID>/cart status=<ID> cost=<ID>,133,0.003325
+gateway,INFO,POST /api/<ID>/order status=<ID> cost=<ID>,131,0.003275
+gateway,INFO,POST /api/<ID>/coupon status=<ID> cost=<ID>,131,0.003275
+gateway,INFO,POST /api/<ID>/search status=<ID> cost=<ID>,126,0.00315
+gateway,INFO,GET /api/<ID>/search status=<ID> cost=<ID>,122,0.00305
+gateway,INFO,GET /api/<ID>/premium status=<ID> cost=<ID>,120,0.003
+product,INFO,query product list category=order size=<ID>,118,0.00295
+gateway,INFO,POST /api/<ID>/cart status=<ID> cost=<ID>,115,0.002875
+product,INFO,query product list category=cart size=<ID>,113,0.002825
+gateway,INFO,GET /api/<ID>/order status=<ID> cost=<ID>,110,0.00275
+gateway,INFO,POST /api/<ID>/premium status=<ID> cost=<ID>,106,0.00265
+cart,WARN,cart item expired sku=<ID>,106,0.00265
+product,INFO,query product list category=premium size=<ID>,103,0.002575
+gateway,ERROR,no healthy upstream for service=redis,103,0.002575
+gateway,WARN,upstream response slow service=order cost=<ID>,102,0.00255
+gateway,WARN,upstream response slow service=auth cost=<ID>,101,0.002525
+gateway,ERROR,upstream connect timeout service=notification after <ID>,101,0.002525
+inventory,ERROR,stock lock conflict sku=<ID> retry=<ID>,101,0.002525
+gateway,ERROR,upstream connect timeout service=inventory after <ID>,101,0.002525
+gateway,ERROR,upstream connect timeout service=payment after <ID>,100,0.0025
+gateway,ERROR,no healthy upstream for service=cart,98,0.00245
+gateway,WARN,upstream response slow service=gateway cost=<ID>,98,0.00245
+product,INFO,query product list category=search size=<ID>,97,0.002425
+gateway,WARN,upstream response slow service=search cost=<ID>,97,0.002425
+gateway,ERROR,no healthy upstream for service=auth,95,0.002375
+gateway,ERROR,no healthy upstream for service=payment,94,0.00235
+notification,ERROR,sms gateway timeout code=<ID>,94,0.00235
+gateway,ERROR,no healthy upstream for service=order,93,0.002325
+gateway,WARN,upstream response slow service=inventory cost=<ID>,92,0.0023
+inventory,INFO,stock deduct sku=<ID> qty=<ID>,89,0.002225
+gateway,ERROR,upstream connect timeout service=auth after <ID>,89,0.002225
+gateway,ERROR,upstream connect timeout service=recommend after <ID>,88,0.0022
+gateway,WARN,upstream response slow service=product cost=<ID>,88,0.0022
+gateway,ERROR,upstream connect timeout service=cart after <ID>,86,0.00215
+gateway,WARN,upstream response slow service=payment cost=<ID>,85,0.002125
+gateway,ERROR,upstream connect timeout service=gateway after <ID>,85,0.002125
+gateway,ERROR,no healthy upstream for service=mysql,85,0.002125
+product,INFO,query product list category=coupon size=<ID>,85,0.002125
+gateway,ERROR,no healthy upstream for service=gateway,83,0.002075
+gateway,ERROR,no healthy upstream for service=product,83,0.002075
+gateway,ERROR,no healthy upstream for service=notification,83,0.002075
+gateway,ERROR,no healthy upstream for service=inventory,83,0.002075
+gateway,ERROR,no healthy upstream for service=search,82,0.00205
+gateway,ERROR,upstream connect timeout service=search after <ID>,81,0.002025
+gateway,ERROR,upstream connect timeout service=order after <ID>,79,0.001975
+gateway,ERROR,upstream connect timeout service=product after <ID>,79,0.001975
+inventory,INFO,stock query sku=<ID> remain=<ID>,79,0.001975
+gateway,WARN,upstream response slow service=recommend cost=<ID>,77,0.001925
+gateway,WARN,upstream response slow service=notification cost=<ID>,77,0.001925
+gateway,ERROR,no healthy upstream for service=recommend,77,0.001925
+gateway,WARN,upstream response slow service=mysql cost=<ID>,76,0.0019
+notification,WARN,sms provider rate limited retry=<ID>,76,0.0019
+inventory,WARN,stock below threshold sku=<ID> remain=<ID>,75,0.001875
+gateway,ERROR,upstream connect timeout service=mysql after <ID>,73,0.001825
+gateway,ERROR,upstream connect timeout service=redis after <ID>,73,0.001825
+notification,INFO,push notification batch size=<ID>,72,0.0018
+payment,INFO,payment success trade_no=<ID> channel=<ID>,69,0.001725
+auth,INFO,user login uid=<ID> channel=search,67,0.001675
+gateway,WARN,upstream response slow service=cart cost=<ID>,66,0.00165
+gateway,WARN,upstream response slow service=redis cost=<ID>,65,0.001625
+auth,INFO,user login uid=<ID> channel=cart,57,0.001425
+auth,INFO,user login uid=<ID> channel=order,57,0.001425
+auth,INFO,user login uid=<ID> channel=premium,55,0.001375
+search,INFO,search query=search hits=<ID> cost=<ID>,48,0.0012
+search,INFO,search query=order hits=<ID> cost=<ID>,47,0.001175
+cart,INFO,cart add sku=order qty=<ID>,46,0.00115
+auth,INFO,user login uid=<ID> channel=coupon,44,0.0011
+cart,INFO,cart add sku=coupon qty=<ID>,43,0.001075
+search,INFO,search query=coupon hits=<ID> cost=<ID>,42,0.00105
+cart,WARN,cart item expired sku=coupon,40,0.001
+cart,INFO,cart add sku=premium qty=<ID>,40,0.001
+cart,WARN,cart item expired sku=premium,39,0.000975
+search,INFO,search query=premium hits=<ID> cost=<ID>,38,0.00095
+inventory,INFO,stock query sku=cart remain=<ID>,38,0.00095
+cart,INFO,cart add sku=cart qty=<ID>,37,0.000925
+inventory,WARN,stock below threshold sku=order remain=<ID>,37,0.000925
+cart,WARN,cart item expired sku=order,37,0.000925
+inventory,ERROR,stock lock conflict sku=search retry=<ID>,36,0.0009
+inventory,INFO,stock deduct sku=search qty=<ID>,35,0.000875
+notification,INFO,sms sent template=<ID> uid=<ID>,35,0.000875
+cart,WARN,cart item expired sku=cart,33,0.000825
+cart,WARN,cart item expired sku=search,33,0.000825
+inventory,INFO,stock query sku=search remain=<ID>,32,0.0008
+inventory,WARN,stock below threshold sku=cart remain=<ID>,32,0.0008
+search,INFO,search query=cart hits=<ID> cost=<ID>,32,0.0008
+inventory,WARN,stock below threshold sku=search remain=<ID>,32,0.0008
+inventory,INFO,stock query sku=order remain=<ID>,32,0.0008
+inventory,INFO,stock deduct sku=cart qty=<ID>,32,0.0008
+inventory,ERROR,stock lock conflict sku=cart retry=<ID>,30,0.00075
+cart,INFO,cart add sku=search qty=<ID>,29,0.000725
+inventory,WARN,stock below threshold sku=premium remain=<ID>,29,0.000725
+inventory,INFO,stock deduct sku=coupon qty=<ID>,29,0.000725
+inventory,INFO,stock deduct sku=premium qty=<ID>,28,0.0007
+inventory,INFO,stock query sku=coupon remain=<ID>,27,0.000675
+inventory,ERROR,stock lock conflict sku=premium retry=<ID>,26,0.00065
+payment,INFO,payment success trade_no=<ID> channel=search,25,0.000625
+inventory,INFO,stock query sku=premium remain=<ID>,24,0.0006
+inventory,ERROR,stock lock conflict sku=coupon retry=<ID>,23,0.000575
+inventory,WARN,stock below threshold sku=coupon remain=<ID>,23,0.000575
+inventory,ERROR,stock lock conflict sku=order retry=<ID>,23,0.000575
+inventory,INFO,stock deduct sku=order qty=<ID>,21,0.000525
+payment,INFO,payment success trade_no=<ID> channel=cart,19,0.000475
+payment,INFO,payment success trade_no=<ID> channel=premium,19,0.000475
+payment,INFO,payment success trade_no=<ID> channel=coupon,18,0.00045
+payment,INFO,payment success trade_no=<ID> channel=order,18,0.00045
+notification,INFO,sms sent template=search uid=<ID>,15,0.000375
+notification,INFO,sms sent template=premium uid=<ID>,14,0.00035
+notification,INFO,sms sent template=cart uid=<ID>,11,0.000275
+notification,INFO,sms sent template=coupon uid=<ID>,8,0.0002
+notification,INFO,sms sent template=order uid=<ID>,8,0.0002

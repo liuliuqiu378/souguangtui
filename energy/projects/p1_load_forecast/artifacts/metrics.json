@@ -1,0 +1,266 @@
+{
+  "test_period": [
+    "2024-10-01",
+    "2024-12-31"
+  ],
+  "n_test_samples": 52692,
+  "lgb": {
+    "MAE": 5.76,
+    "RMSE": 7.25,
+    "MAPE": 1.78
+  },
+  "ridge": {
+    "MAE": 9.77,
+    "RMSE": 12.5,
+    "MAPE": 3.0
+  },
+  "persist": {
+    "MAE": 17.07,
+    "RMSE": 23.46,
+    "MAPE": 5.3
+  },
+  "weekly": {
+    "MAE": 42.7,
+    "RMSE": 53.42,
+    "MAPE": 13.25
+  },
+  "by_horizon": [
+    {
+      "horizon": 1,
+      "mape_lgb": 1.8,
+      "mape_persist": 5.41
+    },
+    {
+      "horizon": 2,
+      "mape_lgb": 1.8,
+      "mape_persist": 5.4
+    },
+    {
+      "horizon": 3,
+      "mape_lgb": 1.8,
+      "mape_persist": 5.39
+    },
+    {
+      "horizon": 4,
+      "mape_lgb": 1.79,
+      "mape_persist": 5.38
+    },
+    {
+      "horizon": 5,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.37
+    },
+    {
+      "horizon": 6,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.36
+    },
+    {
+      "horizon": 7,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.35
+    },
+    {
+      "horizon": 8,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.34
+    },
+    {
+      "horizon": 9,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.33
+    },
+    {
+      "horizon": 10,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.32
+    },
+    {
+      "horizon": 11,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.31
+    },
+    {
+      "horizon": 12,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.3
+    },
+    {
+      "horizon": 13,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.29
+    },
+    {
+      "horizon": 14,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.28
+    },
+    {
+      "horizon": 15,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.27
+    },
+    {
+      "horizon": 16,
+      "mape_lgb": 1.76,
+      "mape_persist": 5.26
+    },
+    {
+      "horizon": 17,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.25
+    },
+    {
+      "horizon": 18,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.24
+    },
+    {
+      "horizon": 19,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.23
+    },
+    {
+      "horizon": 20,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.22
+    },
+    {
+      "horizon": 21,
+      "mape_lgb": 1.77,
+      "mape_persist": 5.21
+    },
+    {
+      "horizon": 22,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.2
+    },
+    {
+      "horizon": 23,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.19
+    },
+    {
+      "horizon": 24,
+      "mape_lgb": 1.78,
+      "mape_persist": 5.17
+    }
+  ],
+  "by_target_hour": [
+    {
+      "hour": 0,
+      "mape": 1.87
+    },
+    {
+      "hour": 1,
+      "mape": 1.86
+    },
+    {
+      "hour": 2,
+      "mape": 1.87
+    },
+    {
+      "hour": 3,
+      "mape": 1.98
+    },
+    {
+      "hour": 4,
+      "mape": 2.02
+    },
+    {
+      "hour": 5,
+      "mape": 2.18
+    },
+    {
+      "hour": 6,
+      "mape": 1.99
+    },
+    {
+      "hour": 7,
+      "mape": 1.81
+    },
+    {
+      "hour": 8,
+      "mape": 1.69
+    },
+    {
+      "hour": 9,
+      "mape": 1.46
+    },
+    {
+      "hour": 10,
+      "mape": 1.41
+    },
+    {
+      "hour": 11,
+      "mape": 1.38
+    },
+    {
+      "hour": 12,
+      "mape": 1.59
+    },
+    {
+      "hour": 13,
+      "mape": 1.86
+    },
+    {
+      "hour": 14,
+      "mape": 1.85
+    },
+    {
+      "hour": 15,
+      "mape": 1.97
+    },
+    {
+      "hour": 16,
+      "mape": 1.92
+    },
+    {
+      "hour": 17,
+      "mape": 1.78
+    },
+    {
+      "hour": 18,
+      "mape": 1.62
+    },
+    {
+      "hour": 19,
+      "mape": 1.55
+    },
+    {
+      "hour": 20,
+      "mape": 1.62
+    },
+    {
+      "hour": 21,
+      "mape": 1.81
+    },
+    {
+      "hour": 22,
+      "mape": 1.8
+    },
+    {
+      "hour": 23,
+      "mape": 1.72
+    }
+  ],
+  "by_month": [
+    {
+      "month": "2024-10",
+      "mape": 1.89
+    },
+    {
+      "month": "2024-11",
+      "mape": 1.68
+    },
+    {
+      "month": "2024-12",
+      "mape": 1.75
+    }
+  ],
+  "peak_valley": {
+    "peak_mape": 1.51,
+    "valley_mape": 2.01
+  },
+  "best_iteration": 183
+}

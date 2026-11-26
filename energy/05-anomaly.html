@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 章 · 异常用能识别 | 能源数据与算法工程师</title>
+<meta name="description" content="窃电、倍率、设备故障、传感器卡死、尖峰五类异常的识别方法：同业基线、规则引擎、孤立森林、告警治理与真实评估。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 5 章 · <b>异常用能识别</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 05 · ANOMALY DETECTION</div>
+          <h1>异常用能识别</h1>
+          <p class="lead">预测是“明天大概用多少”，异常识别是“今天这个数不对劲”。后者更难：没有标签、误报会被业务骂、同一个数字在夏天和冬天含义不同。这一章讲清五类异常怎么认、规则和模型怎么配合、以及为什么“F1 0.956”背后还藏着 4 个漏报。</p>
+          <div class="page-meta">
+            <span>预计 110 分钟</span>
+            <span>前置：第 3 章</span>
+            <span>产出：可解释、可分级、可闭环的告警</span>
+          </div>
+        </div>
+
+        <h2 id="why">为什么异常识别比预测更难</h2>
+        <p>先建立一个直觉：预测错 3%，业务能接受，因为购电计划有备用；异常识别漏 1 个窃电，可能就是几万块；误报 10 个，运维跑断腿，最后没人看告警——<strong>模型直接失效</strong>。</p>
+
+        <div class="grid-3">
+          <div class="card tight">
+            <h4>难点一：没有标签</h4>
+            <p>真实项目里“哪台表在偷电”不会提前告诉你。你只有一堆曲线，以及事后稽核出的极少案例。所以纯监督学习走不通，必须用无监督 + 规则 + 少量人工反馈。</p>
+          </div>
+          <div class="card tight">
+            <h4>难点二：正常也会变</h4>
+            <p>天气热了，空调负荷普涨 30%；订单多了，工厂全线抬高。如果只看“自己比昨天高”，你会把整个园区的正常增长全报成异常。</p>
+          </div>
+          <div class="card tight">
+            <h4>难点三：异常的定义在业务手里</h4>
+            <p>“读数下降 30%”可能是窃电，也可能只是停产检修。模型只能给出“可疑”，最终判定必须有人工核查与工单闭环。</p>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">本章要解决的核心问题</b>
+          <p>如何在没有标签的条件下，构造一个<strong>误报可控、原因可解释、严重度可分级</strong>的异常识别系统？答案是三层：<strong>数据质量层</strong>（表坏了）→ <strong>行为异常层</strong>（用得不对）→ <strong>设备状态层</strong>（设备坏了）。每层用不同的基线，不能混为一谈。</p>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先分清：能耗预警和异常识别不是一回事</b>
+          <p><strong>能耗预警</strong>是“和计划/预算比，超了就提醒”，例如“本月用电已超预算 8%”“今日负荷比计划高 15%”“单位产品电耗连续 3 天上升”。它依赖明确的参照值，偏运营管理。<br><strong>异常识别</strong>是“没有计划可比，也要找出不正常”，靠自身历史与同业基线，偏稽核与运维。<br>两者是上下游：预警负责<strong>提醒</strong>，异常识别负责<strong>解释</strong>。项目二把两者合并在日粒度告警里，用“原因”字段区分，派给不同班组。</p>
+        </div>
+
+        <h2 id="types">五类异常：从现象到特征</h2>
+        <p>不要一上来就调模型。先把“异常长什么样”写清楚，特征自然就出来了。项目二注入了五类异常，每一类都对应真实业务。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:13%">类型</th><th style="width:25%">数据上的表现</th><th style="width:30%">业务含义</th><th>主要识别信号</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>窃电 / 读数偏低</strong></td>
+                <td>整段负荷按固定比例下降（本项目 −35%，持续 12 天）</td>
+                <td>绕表、改接线、互感器被人为调整。属于<strong>收入损失</strong>，优先级最高</td>
+                <td>同业比值持续偏低（<code>peer_dev</code>）；自身水平突变（<code>level_shift</code>）</td>
+              </tr>
+              <tr>
+                <td><strong>倍率配置错误</strong></td>
+                <td>整段读数突然 ×3（本项目 3 台表）</td>
+                <td>CT/PT 倍率录错、换表后参数没改。会导致<strong>多收电费</strong>与需量虚高</td>
+                <td>水平突变 + 超容量（<code>out_of_range</code>）；同业比值偏高</td>
+              </tr>
+              <tr>
+                <td><strong>设备故障</strong></td>
+                <td>负荷骤降约 45%，持续数天</td>
+                <td>产线停机、压缩机故障、照明回路断路。影响<strong>生产与运维</strong></td>
+                <td>自身水平突变；夜间占比异常（<code>night_ratio</code>）</td>
+              </tr>
+              <tr>
+                <td><strong>传感器卡死</strong></td>
+                <td>连续 8 小时数值完全不变</td>
+                <td>采集器死机、通信中断后保持最后值。属于<strong>数据质量问题</strong></td>
+                <td>最长恒定段占比（<code>flat_ratio</code>）≥ 20%</td>
+              </tr>
+              <tr>
+                <td><strong>异常尖峰</strong></td>
+                <td>单点突然 ×7，随后恢复</td>
+                <td>冲击性负荷、计量故障、通信误码。会污染<strong>需量结算</strong></td>
+                <td>当日最大值 / 过去 14 天最大值中位数（<code>spike_score</code>）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout field">
+          <b class="t">把“数据问题”和“用电问题”分开</b>
+          <p>传感器卡死、尖峰、缺失，本质是<strong>表坏了</strong>，处理方式是修数据 + 派工单给采集运维；窃电、倍率、故障是<strong>用电行为/设备状态</strong>，处理方式是稽核与检修。两者混在一个告警池里，业务没法分派。项目二在告警原因里显式区分了这五类，就是为了让工单能路由到不同班组。</p>
+        </div>
+
+        <h2 id="baseline">先建基线：日粒度特征怎么造</h2>
+        <p>15 分钟粒度直接做异常检测，噪声太大、样本太少。工程上通常先聚合到<strong>测点 × 日</strong>，一天一行，再在这一层做判定。这样 40 个测点 × 60 天 = 2400 行，既保留了形态，又足够稳定。</p>
+
+        <h3>日粒度特征清单</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">特征</th><th style="width:20%">怎么算</th><th>回答什么问题</th></tr></thead>
+            <tbody>
+              <tr><td><code>mean_kw / max_kw / p95_kw</code></td><td>当日有效点的均值、最大值、95 分位</td><td>今天整体用了多少、峰值有多高</td></tr>
+              <tr><td><code>cv</code></td><td>标准差 / 均值</td><td>波动是否异常（停产会变平，冲击负荷会变尖）</td></tr>
+              <tr><td><code>night_ratio</code></td><td>0~6 点均值 / 全天均值</td><td>夜间该停没停、或该亮没亮</td></tr>
+              <tr><td><code>flat_ratio</code></td><td>最长恒定段长度 / 96</td><td>传感器是否卡死</td></tr>
+              <tr><td><code>out_of_range</code></td><td>超过 1.2 倍容量的点数</td><td>倍率错误、计量异常</td></tr>
+              <tr><td><code>completeness</code></td><td>有效点数 / 96</td><td>数据是否可信</td></tr>
+              <tr><td><code>level_shift</code></td><td>今日均值 / 自身历史基线 − 1</td><td>相对自己，今天是否突变</td></tr>
+              <tr><td><code>peer_dev</code></td><td>(今日同业比值 / 自身正常同业比值) − 1</td><td>相对同类测点，今天是否偏离</td></tr>
+              <tr><td><code>spike_score</code></td><td>今日最大值 / 过去 14 天最大值中位数</td><td>是否出现单点尖峰</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>最关键的一步：同业基线（peer baseline）</h3>
+        <p>假设园区里有 12 个办公室测点。今天天气 38°C，所有办公室空调都开足，负荷普涨 30%。如果只看“自己比自己”，12 个测点全报警——这就是<strong>共因误报</strong>。正确做法是横向比较：</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">detect.py · 同业基线（节选）</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 同一天、同一类型的测点中位数：抵消天气、订单等共因</span>
+feat[<span class="s">"peer_median"</span>] = feat.groupby([<span class="s">"date"</span>, <span class="s">"meter_type"</span>])[<span class="s">"mean_kw"</span>].transform(<span class="s">"median"</span>)
+feat[<span class="s">"peer_ratio"</span>] = feat[<span class="s">"mean_kw"</span>] / (feat[<span class="s">"peer_median"</span>] + <span class="n">1e-6</span>)
+
+<span class="c"># 每个测点"正常时的同业比值"：用投运初期稳定段的中位数</span>
+<span class="c"># 生产上按月滚动更新，且更新时剔除已判定异常的日期</span>
+base_period = feat[feat[<span class="s">"date"</span>] &lt; START + pd.Timedelta(<span class="s">"24D"</span>)]
+ratio_base = base_period.groupby(<span class="s">"meter_id"</span>)[<span class="s">"peer_ratio"</span>].median()
+feat[<span class="s">"ratio_base"</span>] = feat[<span class="s">"meter_id"</span>].map(ratio_base)
+
+<span class="c"># 相对自身正常水平的偏离：天气普涨约掉，只留个体异常</span>
+feat[<span class="s">"peer_dev"</span>] = feat[<span class="s">"peer_ratio"</span>] / (feat[<span class="s">"ratio_base"</span>] + <span class="n">1e-6</span>) - <span class="n">1.0</span>
+</pre>
+        </div>
+
+        <p>举个具体数字：某办公室测点正常时是同类中位数的 1.05 倍（<code>ratio_base=1.05</code>）。今天同类中位 30 kW，它 31 kW，<code>peer_ratio=1.03</code>，<code>peer_dev≈−2%</code>，正常。如果它突然掉到 20 kW，<code>peer_ratio=0.67</code>，<code>peer_dev≈−36%</code>，触发告警。</p>
+
+        <div class="callout how">
+          <b class="t">为什么不用“自己比昨天”做主信号</b>
+          <p>因为天气、订单、节假日是<strong>共因</strong>，会让所有测点同向变化。同业基线把这些共因约掉，只留下“<strong>同类里就你不正常</strong>”的部分。项目二里 <code>level_shift</code>（自己比自己）仍然保留为辅助特征，但不单独作为报警条件——这是踩过坑之后的设计。</p>
+        </div>
+
+        <h2 id="rule">规则引擎：简单，但不可替代</h2>
+        <p>规则看起来“土”，但它是异常识别的地基。原因有三个：<strong>可解释</strong>（能直接告诉运维为什么报警）、<strong>可调</strong>（业务能改阈值）、<strong>兜底</strong>（模型没见过的模式，规则能抓住）。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">detect.py · 四条规则</span><button class="copy">复制</button></div>
+          <pre>f[<span class="s">"rule_level"</span>]   = f[<span class="s">"peer_dev"</span>].abs() &gt;= <span class="n">0.20</span>          <span class="c"># 同业偏离 ≥20%</span>
+f[<span class="s">"rule_spike"</span>]   = (f[<span class="s">"spike_score"</span>] &gt;= <span class="n">2.5</span>) | (f[<span class="s">"out_of_range"</span>] &gt; <span class="n">0</span>)
+f[<span class="s">"rule_flat"</span>]    = f[<span class="s">"flat_score"</span>] &gt;= <span class="n">0.20</span>           <span class="c"># 恒定值 ≥20% 时长</span>
+f[<span class="s">"rule_quality"</span>] = f[<span class="s">"completeness"</span>] &lt; <span class="n">0.85</span>         <span class="c"># 缺失超过 15%</span>
+</pre>
+        </div>
+
+        <p>阈值怎么定？不是拍脑袋，而是看<strong>校准期的分布</strong>。比如 <code>peer_dev</code> 在正常日近似正态，取 20% 大约覆盖 2~3 个标准差；<code>flat_ratio</code> 正常日基本为 0，取 20%（约 5 小时恒定）已经非常保守。<strong>做法是：先画出正常期的分布，再选一个只让 1%~3% 正常日越界的阈值</strong>，然后用评估期验证。</p>
+
+        <div class="callout pit">
+          <b class="t">阈值不能“全量数据一起定”</b>
+          <p>如果你用包含异常期的 60 天数据算分位数，异常已经把分布拉宽了，阈值会变松，漏报就来了。项目二严格用<strong>前 24 天校准</strong>（<code>CALIB_END_DAY=24</code>），评估从第 30 天开始，中间留了 6 天缓冲，避免边界污染。</p>
+        </div>
+
+        <h2 id="iforest">孤立森林：无标签时怎么用</h2>
+        <p>孤立森林（Isolation Forest）的直觉很简单：<strong>异常点少、且与别人不一样，所以随机切几刀就能把它“孤立”出来</strong>。正常点挤在一起，要切很多刀才能单独分出来。这里的“无标签”指没有人工确认过的“这行是异常”记录——真实项目里这种标注通常很少，所以不能直接当监督学习来训。</p>
+
+        <div class="steps">
+          <div class="step"><h4>随机选一个特征，随机选一个切点</h4><p>把数据切成两半。重复很多次，形成一片“森林”。</p></div>
+          <div class="step"><h4>记录每个点被孤立所需的切分次数</h4><p>切分次数越少（路径越短），说明它越孤立，越可能是异常。</p></div>
+          <div class="step"><h4>用校准期分数定阈值</h4><p>项目二取校准期分数的 99% 分位作为阈值 <strong>0.61867</strong>，即“正常日里只有 1% 会越界”。</p></div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">detect.py · 孤立森林（节选）</span><button class="copy">复制</button></div>
+          <pre>feats = [<span class="s">"cv"</span>, <span class="s">"night_ratio"</span>, <span class="s">"level_shift"</span>, <span class="s">"peer_dev"</span>,
+         <span class="s">"spike_score"</span>, <span class="s">"flat_ratio"</span>, <span class="s">"completeness"</span>]
+calib = f[f[<span class="s">"date"</span>] &lt; START + pd.Timedelta(<span class="s">"24D"</span>)].dropna(subset=feats)
+
+iso = IsolationForest(n_estimators=<span class="n">300</span>, contamination=<span class="n">0.02</span>, random_state=<span class="n">42</span>)
+iso.fit(calib[feats])
+
+scores = -iso.score_samples(f[feats].fillna(<span class="n">0.0</span>))   <span class="c"># 越大越异常</span>
+thr = float(np.quantile(-iso.score_samples(calib[feats]), <span class="n">0.99</span>))
+f[<span class="s">"rule_iforest"</span>] = scores &gt;= thr
+</pre>
+        </div>
+
+        <div class="callout what">
+          <b class="t">孤立森林在这套系统里到底贡献了什么</b>
+          <p>它主要抓<strong>规则覆盖不到的多维组合</strong>，比如“波动率略高 + 夜间占比略高 + 同业略低”同时出现。单独看每个维度都没越线，合起来就离群。项目二的 114 条告警里，有 2 条是纯模型发现（原因标记“模型离群”），规则没报——这就是它的价值：补漏，而不是主力。</p>
+        </div>
+
+        <h2 id="combine">组合与分级：把两套信号接起来</h2>
+        <p>组合策略是<strong>逻辑或（OR）</strong>：规则命中或模型越界，都告警。原因是异常识别里<strong>召回优先</strong>——漏报的代价是钱，误报的代价是人工。但为了不让告警洪水，必须加严重度分级。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:12%">严重度</th><th style="width:34%">触发条件</th><th>处置动作</th></tr></thead>
+            <tbody>
+              <tr><td><strong>高</strong></td><td>水平突变（同业偏离 ≥20%）或尖峰/超容量</td><td>当天推送，48 小时内现场核查；涉及窃电/倍率时同步营销或结算</td></tr>
+              <tr><td><strong>中</strong></td><td>仅数据质量类（缺失、卡死）或仅模型离群</td><td>进入周度工单池，安排采集运维或补采</td></tr>
+              <tr><td><strong>低</strong></td><td>未告警，但某些指标接近阈值</td><td>不推送，留在监控看板，用于观察趋势</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>这样做的效果：114 条告警里，高严重度只占一部分，运维不会被“模型离群”这类弱信号淹没。<strong>告警系统的第一指标不是 F1，而是“业务愿意持续看”</strong>。</p>
+
+        <h2 id="eval">评估：混淆矩阵背后的故事</h2>
+        <p>评估窗口 2024-07-31 ~ 08-29，共 1200 个“测点日”，其中 112 个被标注为异常（正例）。结果：</p>
+
+        <div class="grid-4">
+          <div class="stat teal"><div class="num">0.956</div><div class="lbl">F1</div></div>
+          <div class="stat"><div class="num">0.947</div><div class="lbl">精确率 Precision</div></div>
+          <div class="stat"><div class="num">0.964</div><div class="lbl">召回率 Recall</div></div>
+          <div class="stat amber"><div class="num">9.5<small>%</small></div><div class="lbl">告警率（114 / 1200）</div></div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th class="num">实际异常</th><th class="num">实际正常</th><th class="num">合计</th></tr></thead>
+            <tbody>
+              <tr><td><strong>判为异常</strong></td><td class="num good">TP 108</td><td class="num bad">FP 6</td><td class="num">114</td></tr>
+              <tr><td><strong>判为正常</strong></td><td class="num bad">FN 4</td><td class="num good">TN 1082</td><td class="num">1086</td></tr>
+              <tr><td><strong>合计</strong></td><td class="num">112</td><td class="num">1088</td><td class="num">1200</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p2_anomaly_result.png" alt="异常识别结果：混淆矩阵与分类型召回">
+          <figcaption><b>整体结果。</b>1200 个测点日中识别出 114 条告警，其中 108 条是真实异常；漏报 4 条，全部是低负荷时段的单点尖峰。</figcaption>
+          <div class="fig-how"><b>怎么看：</b>先看召回（漏报能不能接受），再看精确率（运维工作量），最后看告警率。9.5% 的日告警率对一个 40 测点的园区偏高，生产上通常会通过“连续多日确认”再压一轮。</div>
+        </figure>
+
+        <h3>分类型召回：哪类最难</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>异常类型</th><th class="num">标注测点日</th><th class="num">命中</th><th class="num">召回</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>传感器卡死</td><td class="num">6</td><td class="num">6</td><td class="num good">100%</td><td>恒定值特征极强，规则几乎必中</td></tr>
+              <tr><td>倍率配置错误</td><td class="num">33</td><td class="num">33</td><td class="num good">100%</td><td>×3 后同业比值与容量双超限</td></tr>
+              <tr><td>疑似窃电</td><td class="num">50</td><td class="num">50</td><td class="num good">100%</td><td>−35% 持续 10 天以上，同业偏离稳定</td></tr>
+              <tr><td>设备故障</td><td class="num">32</td><td class="num">32</td><td class="num good">100%</td><td>−45% 骤降，水平突变明显</td></tr>
+              <tr><td>异常尖峰</td><td class="num">15</td><td class="num">11</td><td class="num bad">73.3%</td><td>低负荷时段的单点尖峰不改变日最大值</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="lead" style="font-size:15px">注：各类型标注数之和（136）大于正例数（112），因为存在<strong>同一测点同一天叠加两类异常</strong>的情况，例如 M005 在 7 月底到 8 月初同时有窃电与故障。</p>
+
+        <div class="callout pit">
+          <b class="t">诚实说：这个 F1 偏高，原因是信号太强</b>
+          <p>本项目注入的异常幅度大（−35%、×3、−45%、8 小时卡死），且评估窗口充足，所以模型容易拿高分。真实场景里窃电可能只低 3%~5%，混在正常波动里，F1 通常会掉到 0.6~0.8。面试时<strong>必须主动说明这一点</strong>，并给出“如果信号变弱怎么办”：延长观察窗口（7 日累计）、引入更多外部特征（产量、天气、营业时间）、加入人工反馈迭代。</p>
+        </div>
+
+        <h3>误报 6 条：每一条都能解释</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:11%">测点</th><th style="width:14%">日期</th><th style="width:16%">原因</th><th>为什么误报</th></tr></thead>
+            <tbody>
+              <tr><td>M005</td><td>08-13 ~ 08-16</td><td>尖峰/超容量（高）</td><td><strong>异常恢复期误报。</strong>M005 前期被窃电（−35%）和故障（−45%）压低，14 天最大值基线也被压低；恢复正常后，日最大值相对“被污染的历史基线”看起来像 3 倍尖峰。修正方法：基线窗口剔除已告警日，或用更长窗口的中位数。</td></tr>
+              <tr><td>M037</td><td>08-10</td><td>模型离群（中）</td><td>该路灯测点负荷很小（容量 39 kW，日均 5.5 kW），夜间占比等特征数值不稳定，被孤立森林判为离群。</td></tr>
+              <tr><td>M001</td><td>08-24</td><td>模型离群（中）</td><td><code>peer_dev</code> 仅 −16.8%，规则未触发，但多维组合落在低密度区。属于模型“过度敏感”。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>这 4 条 M005 的连续误报暴露了一个通用问题：<strong>异常会污染它自己的基线</strong>。生产上的解法是“基线只统计未被判为异常的历史日”，并且对同一测点连续告警做合并（第一次报“高”，后续转为“跟踪中”，不重复派单）。</p>
+
+        <h3>漏报 4 条：也都能解释</h3>
+        <p>漏报全部来自路灯测点（M035、M036）的单点尖峰。原因是：路灯白天负荷接近 1~2 kW，尖峰 ×7 后也只有 7~14 kW，<strong>仍然低于傍晚的正常峰值</strong>，所以“当日最大值”没有变化，<code>spike_score</code> 约等于 1，规则和模型都没反应。</p>
+
+        <div class="callout how">
+          <b class="t">怎么修这一类漏报</b>
+          <p>把尖峰检测从“日最大值”改成“<strong>逐点相对邻域的突增</strong>”：对每个 15 分钟点，计算它相对前后 2 小时中位数的倍数，再按测点类型设阈值。这样白天的小尖峰也能抓住。代价是计算量上升、误报可能增加，需要重新校准。这个改进方向可以直接写进项目报告。</p>
+        </div>
+
+        <h2 id="case">两个真实案例：图上看异常</h2>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p2_theft_case.png" alt="窃电案例：测点读数相对同业基线持续偏低">
+          <figcaption><b>窃电案例。</b>某测点从 7 月 27 日起读数整体下移约 35%，与同类型测点的中位数差距持续扩大；期间还叠加了一次设备故障导致的进一步下跌。</figcaption>
+          <div class="fig-how"><b>怎么看：</b>单看蓝色曲线只是“今天低一点”；看橙色同业中位数，才发现“别人没降，只有它降”，且降幅稳定——稳定是关键，随机波动不会连续 10 天保持同一比例。</div>
+        </figure>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p2_spike_case.png" alt="尖峰案例：单点突增 7 倍">
+          <figcaption><b>尖峰案例。</b>某个 15 分钟点突然放大到邻域的 7 倍，随后立即恢复；这种形态通常来自计量故障或通信误码，而不是真实用电。</figcaption>
+          <div class="fig-how"><b>怎么看：</b>真实冲击负荷（如电机启动）通常有衰减过程，不会一个点上去、下一个点立刻回到原值。持续性是区分“真负荷”和“坏数据”的重要依据。</div>
+        </figure>
+
+        <h2 id="ops">告警治理：让业务愿意用</h2>
+        <p>模型算完只是开始。一个能落地的异常系统，至少要有下面四件事：</p>
+
+        <div class="steps">
+          <div class="step"><h4>原因可读</h4><p>告警必须带“为什么”：“同业偏离 −36%”“连续恒定 6.2 小时”“超过容量 1.4 倍”。运维看到原因才知道去查什么。</p></div>
+          <div class="step"><h4>分级与合并</h4><p>同一测点连续多日异常只保留一条主告警 + 跟踪记录；高严重度当天推送，中低严重度进周报。避免“告警疲劳”。</p></div>
+          <div class="step"><h4>工单闭环</h4><p>每条告警要有状态：待核查 / 已确认 / 误报 / 已处理。人工结论要回写到标签库，用于下一轮阈值校准和模型迭代。</p></div>
+          <div class="step"><h4>效果回算</h4><p>每月统计：告警数、确认率、平均处理时长、追回金额。这才是给管理层看的指标，比 F1 更有说服力。</p></div>
+        </div>
+
+        <div class="callout quote">
+          <p>“我们没有用很复杂的模型，规则 + 孤立森林，F1 0.956。但真正让系统活下来的是：每条告警都能解释、都能派单、误报会被回写。模型只是整条链路的一环。”</p>
+        </div>
+
+        <h2 id="pit">常见坑</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:26%">坑</th><th style="width:30%">表现</th><th>正确做法</th></tr></thead>
+            <tbody>
+              <tr><td>用未来数据校准阈值</td><td>用全量 60 天算分位数，异常把分布拉宽</td><td>只用前 24 天校准，评估期从第 30 天开始</td></tr>
+              <tr><td>用“自己比自己”做主信号</td><td>高温天全园区报警</td><td>用同业基线抵消共因，自身变化仅作辅助</td></tr>
+              <tr><td>把缺失填成 0</td><td>卡死/断采被当成“停产”，告警原因错</td><td>缺失保留 NaN，单独走数据质量规则</td></tr>
+              <tr><td>标签泄漏</td><td>把异常期数据放进基线，恢复期误报</td><td>基线剔除已告警日；滚动更新时更谨慎</td></tr>
+              <tr><td>只看 F1 不看告警率</td><td>召回很高，但每天几百条告警，没人看</td><td>同时约束告警率，做分级与合并</td></tr>
+              <tr><td>异常类型不区分</td><td>窃电和数据断采混在一起，无法派单</td><td>按类型路由：稽核 / 采集运维 / 设备检修</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="faq">常见问题</h2>
+
+        <details class="qa" open>
+          <summary>Q1：没有标签，怎么评估模型好坏？</summary>
+          <div class="ans">三条路：① 用<strong>注入式仿真</strong>（本项目做法）先验证方法可行性；② 用<strong>历史稽核案例</strong>做小样本回测；③ 上线后用<strong>人工确认率</strong>作为代理指标，持续迭代。注意：仿真能证明“方法有效”，但不能证明“线上也能到 0.956”，表述时要分清。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：为什么用孤立森林，不用 One-Class SVM 或 AutoEncoder？</summary>
+          <div class="ans">孤立森林训练快、对特征尺度不敏感、样本少也能用，且对“少数离群点”很敏感，适合日粒度几百到几万行的场景。One-Class SVM 对参数和核函数敏感；AutoEncoder 需要更多数据与调参，且解释性差。这个规模下，简单模型的性价比最高。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：同业基线在测点类型很少时怎么办？</summary>
+          <div class="ans">同类型测点少于 5 个时，中位数不稳定。可以退化为“园区整体负荷比例”基线，或按容量归一化后跨类型比较（如“负荷率 = 均值 / 容量”）。本项目路灯只有 6 个点，已经接近下限。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：告警率 9.5% 是不是太高？</summary>
+          <div class="ans">评估期 30 天共 114 条告警，平均每天约 4 条。对一个 40 测点的园区，运维尚能接住；但如果测点扩到 4000 个，同比例下就是每天约 380 条，必须压缩。压缩手段：连续 2 天确认、按严重度只推高的、同测点合并。目标通常是日告警率 1%~3%。</div>
+        </details>
+        <details class="qa">
+          <summary>Q5：如何区分“真窃电”和“停产检修”？</summary>
+          <div class="ans">看形态和上下文：窃电通常是<strong>等比例下移且持续</strong>，白天夜间同比例；停产往往是<strong>特定时段归零或大幅下降</strong>，且能对上排产/工单。工程上会接入生产计划、检修工单作为解释变量，或要求稽核人员现场确认。模型只负责“挑出可疑”，不负责定罪。</div>
+        </details>
+        <details class="qa">
+          <summary>Q6：为什么不用 15 分钟粒度直接检测？</summary>
+          <div class="ans">15 分钟粒度噪声大、单点异常多、样本维度高。聚合到日粒度后，单点噪声被平均掉，形态特征（夜间占比、波动率）更稳定，也更符合“按天派单”的业务节奏。单点尖峰这类必须细粒度的异常，再用单独的逐点检测补充。</div>
+        </details>
+
+        <h2 id="check">自测</h2>
+        <ul class="checklist">
+          <li>说出五类异常，以及每一类最强的识别信号。</li>
+          <li>为什么“自己比昨天”会在大热天产生大量误报？同业基线怎么解决？</li>
+          <li>孤立森林的分数越大表示什么？阈值 0.61867 是怎么来的？</li>
+          <li>项目二的 6 个误报里，4 个来自同一个测点，根因是什么？怎么修？</li>
+          <li>4 个漏报为什么全是路灯尖峰？你会怎么改检测逻辑？</li>
+          <li>如果老板问“这个 F1 0.956 能信吗”，你怎么回答？</li>
+          <li>告警系统除了 F1，还应该看哪些业务指标？</li>
+        </ul>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="04-model.html">← 上一章：负荷预测建模</a>
+          <a class="btn-ghost" style="text-decoration:none" href="06-deploy.html">下一章：算法服务化与上线 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 5 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

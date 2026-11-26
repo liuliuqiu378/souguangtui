@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 章 · 特征工程与负荷预测建模 | 能源数据与算法工程师</title>
+<meta name="description" content="五类时序特征、防泄漏检查、ARIMA/Prophet/LightGBM 对比、LightGBM 调参与误差分析、特征消融的真实结论。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 4 章 · <b>特征工程与负荷预测建模</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 04 · FORECASTING</div>
+          <h1>特征工程与负荷预测建模</h1>
+          <p class="lead">这一章把“预测明天用多少电”拆成可执行的动作：造哪些特征、怎么防止偷看未来、为什么选 LightGBM、每个超参在调什么、误差到底出在哪。</p>
+          <div class="page-meta">
+            <span>预计 100 分钟</span>
+            <span>前置：第 2、3 章</span>
+            <span>产出：可训练可评估的预测模型</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先说清楚：特征工程到底是什么</b>
+          <p>模型看不懂一条负荷曲线，它只认识一行行数字。特征工程就是<strong>把原始数据翻译成模型能用的数字</strong>：昨天同一时刻的负荷、目标时刻是周几、预报温度是多少……同一份数据，给模型看什么，决定了它的上限。所以这一章的重点不是调参，而是<strong>决定给模型看什么、以及怎么保证这些数字在预测发生时真的拿得到</strong>。</p>
+        </div>
+
+        <h2 id="define">先把任务定义钉死</h2>
+        <div class="callout what">
+          <b class="t">本项目的时间定义</b>
+          <p><strong>起点</strong>：某天 0 点（origin）。<strong>输入</strong>：0 点之前 7 天的逐时负荷、0 点已知的气象预报、日历信息。<strong>输出</strong>：未来第 1~24 小时的逐时负荷。<strong>训练样本</strong>：每个起点 × 24 个 horizon（提前 1~24 小时，共 24 个预测步长），合计 31.1 万条。<strong>评估</strong>：按起点时间切分，测试集 2024-10-01 之后，5.27 万条样本。</p>
+        </div>
+
+        <p>为什么要把 24 个 horizon 摊平成样本？因为这样可以用<strong>一个模型</strong>同时输出 24 个点，避免训练 24 个模型，也避免递归预测的误差累积。代价是模型要自己学会“不同提前量该依赖什么”——所以 <code>horizon</code> 必须作为特征喂进去。</p>
+
+        <h2 id="feature">五类特征：每一类都在解决什么问题</h2>
+        <p>不要一上来就堆特征。先问“这个特征补的是哪块信息”，再决定要不要加。项目一最终用了 25 个特征，正好分五类。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:13%">类别</th><th style="width:42%">本项目用到的特征</th><th>解决什么问题</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>日历</strong></td>
+                <td><code>tgt_hour, tgt_dow, tgt_month, tgt_is_weekend, tgt_is_holiday, sin_day, cos_day, sin_week, cos_week</code></td>
+                <td>告诉模型“这是几点、周几、是否假期”。正弦/余弦编码让 23 点和 0 点在数值上接近，而不是相差 23。</td>
+              </tr>
+              <tr>
+                <td><strong>滞后</strong></td>
+                <td><code>load_origin, load_lag24, load_lag48, load_lag168, same_hour_yesterday, same_hour_lastweek</code></td>
+                <td>利用自相关：昨天、前天、上周同一时刻的负荷。这是短期预测最强的信号。</td>
+              </tr>
+              <tr>
+                <td><strong>滑动统计</strong></td>
+                <td><code>roll24_mean/std, roll168_mean/max/min</code></td>
+                <td>描述“最近的水平和波动”。最大值/最小值帮助模型判断近期是否出现过极端工况。</td>
+              </tr>
+              <tr>
+                <td><strong>气象</strong></td>
+                <td><code>tgt_temp, tgt_temp2, cooling, heating</code></td>
+                <td>温度的非线性影响。二次项表达 U 形，<code>cooling/heating</code> 直接把“制冷/供暖需求”显式化。</td>
+              </tr>
+              <tr>
+                <td><strong>任务</strong></td>
+                <td><code>horizon</code></td>
+                <td>告诉模型“这是提前几小时的预测”。提前 1 小时和提前 24 小时，可信度完全不同。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>关键代码：一次生成 24 个 horizon</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">train.py · build_supervised（节选）</span><button class="copy">复制</button></div>
+          <pre><span class="k">for</span> h <span class="k">in</span> <span class="n">range</span>(<span class="n">1</span>, <span class="n">25</span>):
+    f = base.copy()                    <span class="c"># 以 origin 时刻为索引的滞后/滚动特征</span>
+    f[<span class="s">"horizon"</span>] = h
+    f[<span class="s">"tgt_hour"</span>] = cal[<span class="s">"hour"</span>].shift(-h)
+    f[<span class="s">"tgt_dow"</span>] = cal[<span class="s">"dow"</span>].shift(-h)
+    f[<span class="s">"tgt_is_weekend"</span>] = cal[<span class="s">"is_weekend"</span>].shift(-h)
+    f[<span class="s">"tgt_temp"</span>] = temp.shift(-h)      <span class="c"># 未来温度：工程上来自预报</span>
+    f[<span class="s">"tgt_temp2"</span>] = f[<span class="s">"tgt_temp"</span>] ** <span class="n">2</span>
+    f[<span class="s">"cooling"</span>] = np.maximum(f[<span class="s">"tgt_temp"</span>] - <span class="n">25.0</span>, <span class="n">0</span>)
+    f[<span class="s">"heating"</span>] = np.maximum(<span class="n">3.0</span> - f[<span class="s">"tgt_temp"</span>], <span class="n">0</span>)
+    f[<span class="s">"same_hour_yesterday"</span>] = y.shift(<span class="n">24</span> - h)
+    f[<span class="s">"sin_day"</span>] = np.sin(<span class="n">2</span> * np.pi * f[<span class="s">"tgt_hour"</span>] / <span class="n">24</span>)
+    f[<span class="s">"cos_day"</span>] = np.cos(<span class="n">2</span> * np.pi * f[<span class="s">"tgt_hour"</span>] / <span class="n">24</span>)
+    f[<span class="s">"y"</span>] = y.shift(-h)               <span class="c"># 标签：未来第 h 小时</span>
+    frames.append(f)
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">必须说清的一个假设：用了“完美气象预报”</b>
+          <p>代码里 <code>temp.shift(-h)</code> 用的是<strong>实际温度</strong>，相当于假设气象预报完全准确。真实系统里你拿到的是预报值，会带 1~2°C 误差，MAPE 通常要上浮 0.3~1.0 个点。面试被问“你的模型上线能到这个数吗”，必须主动承认这一点，并说明你会怎么验证（用历史预报回测）。</p>
+        </div>
+
+        <h2 id="leak">防泄漏：写特征时的五个自检</h2>
+        <div class="steps">
+          <div class="step"><h4>这个数在 origin 时刻存在吗？</h4><p>所有 <code>shift(-k)</code> 的目标侧信息只能来自“预报/计划”，不能来自实测。日历可以，实测负荷不行。</p></div>
+          <div class="step"><h4>滚动窗口是否包含当前点？</h4><p><code>y.rolling(24).mean()</code> 包含 origin 本身；因为 origin 已经发生，这样算<strong>不算泄漏</strong>。但项目里更保守，统一用 <code>y.shift(1).rolling(...)</code>，只用 origin 之前的点，避免边界处理出错。</p></div>
+          <div class="step"><h4>标准化参数是否只用训练集算？</h4><p>Ridge 管道在训练集上 <code>fit</code>，测试集只 <code>transform</code>。树模型不需要标准化，但也不能用全量统计做分箱。</p></div>
+          <div class="step"><h4>切分单位是不是“起点”？</h4><p>同一次预测的 24 个样本必须待在同一边，否则相邻 horizon 会互相泄漏。</p></div>
+          <div class="step"><h4>缺失填充有没有用到未来？</h4><p><code>bfill()</code> 会用后一个值填前面，属于轻度泄漏。项目里只在尾部兜底使用，且影响样本极少，但要能说清。</p></div>
+        </div>
+
+        <h2 id="models">模型家族：从朴素基线到 LightGBM</h2>
+        <p>永远先跑基线。基线的作用不是“凑数”，而是给你一个“不做机器学习能到什么水平”的参照。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:15%">模型</th><th style="width:32%">原理一句话</th><th>在本项目的表现（测试集）</th></tr></thead>
+            <tbody>
+              <tr><td><strong>昨日同期</strong></td><td>直接拿昨天同一时刻的值当预测</td><td>MAPE 5.30%，MAE 17.07 MW。出奇地强，说明日周期占主导</td></tr>
+              <tr><td><strong>上周同期</strong></td><td>拿上周同一天同一时刻的值</td><td>MAPE 13.25%。周末/天气错位导致明显偏差</td></tr>
+              <tr><td><strong>Ridge 回归</strong></td><td>线性模型 + L2 正则，用全部 25 个特征</td><td>MAPE 3.00%，MAE 9.77 MW。能学到线性关系，但学不出 U 形与交互</td></tr>
+              <tr><td><strong>LightGBM</strong></td><td>梯度提升树，逐棵拟合残差</td><td><strong>MAPE 1.78%</strong>，MAE 5.76 MW，RMSE 7.25 MW，最佳迭代 183</td></tr>
+              <tr><td><strong>ARIMA</strong></td><td>用历史序列的自相关结构外推</td><td>适合单序列短期，难以吃进气象/日历等多源特征；24 步长需递归，误差累积</td></tr>
+              <tr><td><strong>Prophet</strong></td><td>趋势 + 季节 + 节假日分解</td><td>上手快、可解释；对突变和精细化气象响应弱于树模型</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">三个模型，用大白话再说一遍</b>
+          <p><strong>Ridge</strong>：给每个特征配一个权重，所有影响直接叠加，所以只能表达线性关系；“L2 正则”是给权重加一点“罚款”，防止某个特征权重过大、把历史噪声也背下来。<strong>LightGBM</strong>：一棵树做一次判断，下一棵树专门修正上一棵树的错误（残差），几百棵接力，于是能学出“温度高于 26℃ 才明显开空调”这种非线性与交互。<strong>孤立森林</strong>（第 5 章）：随机切几刀，很快被单独切出来的点就是异常。</p>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_model_compare.png" alt="四个模型的 MAPE 与 MAE 对比">
+          <figcaption><b>模型对比。</b>LightGBM 相比 Ridge 把 MAPE 从 3.00% 降到 1.78%，相比“昨日同期”从 5.30% 降到 1.78%。</figcaption>
+          <div class="fig-how"><b>面试要点：</b>不要只说“我用了 LightGBM”。要说“我先建立了昨日同期基线，发现它能到 5.3%，说明日周期是主信号；再用线性模型验证特征有效性到 3.0%；最后用树模型捕捉非线性和交互，降到 1.78%”。</div>
+        </figure>
+
+        <div class="callout what">
+          <b class="t">ARIMA 和 Prophet 还要不要学</b>
+          <p>要，但要知道它们的边界。ARIMA 在“只有一条序列、样本短、需要统计检验”时很好用；Prophet 在“快速给出可解释的趋势与节假日效应”时很高效。本岗位写的是“scikit-learn, ARIMA/Prophet”，面试可能问“你为什么不用 Prophet”。答案不是“它不好”，而是“本任务有多源特征和 24 步输出，树模型更合适；我用 Prophet 做过基线，MAPE 约 X%”。</p>
+        </div>
+
+        <h2 id="params">LightGBM：每个超参在调什么</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">参数</th><th style="width:12%">本项目取值</th><th>作用与调法</th></tr></thead>
+            <tbody>
+              <tr><td><code>n_estimators</code></td><td>2000</td><td>树的数量上限。配合早停，实际只用了 183 棵</td></tr>
+              <tr><td><code>learning_rate</code></td><td>0.04</td><td>每棵树的学习率。越小越稳但需要更多树；0.03~0.1 是常用区间</td></tr>
+              <tr><td><code>num_leaves</code></td><td>96</td><td>单棵树复杂度。越大拟合能力越强，也越容易过拟合</td></tr>
+              <tr><td><code>min_child_samples</code></td><td>40</td><td>叶子最小样本数。防止对少数样本过拟合</td></tr>
+              <tr><td><code>subsample / colsample</code></td><td>0.9 / 0.9</td><td>行/列采样，增加随机性、降低过拟合</td></tr>
+              <tr><td><code>reg_lambda</code></td><td>1.0</td><td>L2 正则</td></tr>
+              <tr><td>早停</td><td>100 轮</td><td>验证集 100 轮不提升就停，避免无效训练</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">调参顺序（别一上来就网格搜索）</b>
+          <p>① 先固定 <code>learning_rate=0.05</code>、<code>num_leaves=31</code> 跑通；② 用早停确定树数；③ 调 <code>num_leaves</code>（31 → 63 → 96）；④ 加 <code>min_child_samples</code> 抑制过拟合；⑤ 最后微调采样与正则。<strong>先改特征，再调超参</strong>——特征带来的提升通常远大于超参。</p>
+        </div>
+
+        <h2 id="importance">特征重要性说明了什么</h2>
+        <figure class="fig">
+          <img src="assets/img/charts/p1_feature_importance.png" alt="LightGBM 特征重要性（gain）排序">
+          <figcaption><b>特征重要性（gain）。</b>基于分裂带来的增益累计，反映模型“用谁做决策最多”。</figcaption>
+          <div class="fig-how"><b>注意：</b>gain 高不等于“因果重要”。<code>load_origin</code> 重要，是因为负荷自相关强；它不代表“只要知道当前负荷就能预测”。重要性只用于排查“哪些特征没被用上”，不用于业务解释。</div>
+        </figure>
+
+        <h2 id="ablation">消融实验：特征不是越多越好</h2>
+        <p>这是本项目最值得讲的部分，因为它和“堆特征”的直觉相反。我删掉整类特征重新训练，结果如下。</p>
+        <p><strong>口径说明：</strong>消融使用独立的固定配置（上限 800 棵、<code>learning_rate=0.05</code>、<code>num_leaves=64</code>、早停 60 轮），与主模型的 2000 棵 / 0.04 / 96 叶 / 早停 100 轮不同，所以 full 的 MAE 5.78 与主结果 5.76 差 0.02。这只影响绝对值，不影响“同一配置下各变体之间的比较”。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>变体</th><th class="num">特征数</th><th class="num">MAPE</th><th class="num">MAE</th><th>解读</th></tr></thead>
+            <tbody>
+              <tr><td><strong>full（全量）</strong></td><td class="num">25</td><td class="num">1.78%</td><td class="num">5.78</td><td>基准</td></tr>
+              <tr><td>no_weather</td><td class="num">21</td><td class="num bad">2.22%</td><td class="num">7.24</td><td>去掉气象明显变差 → 气象确实有用</td></tr>
+              <tr><td>calendar_only</td><td class="num">10</td><td class="num bad">2.10%</td><td class="num">6.82</td><td>只用日历，仍能到 2.1%，说明形态规律强</td></tr>
+              <tr><td>no_lag_rolling</td><td class="num">16</td><td class="num">1.74%</td><td class="num">5.63</td><td>去掉滞后滚动，反而略好</td></tr>
+              <tr><td><strong>no_recent_day</strong></td><td class="num">24</td><td class="num good">1.66%</td><td class="num">5.38</td><td>去掉“昨日同期”，居然更好</td></tr>
+              <tr><td>no_horizon</td><td class="num">24</td><td class="num">1.79%</td><td class="num">5.80</td><td>影响很小</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout field">
+          <b class="t">怎么解释“去掉特征反而更好”</b>
+          <p>两个原因：<strong>① 冗余</strong>。<code>same_hour_yesterday</code> 与 <code>load_lag24</code>、<code>roll24_mean</code> 高度相关，模型在有限数据上会学到噪声。<strong>② 稳定性</strong>。昨日同期在异常日（节假日、设备检修）会给出错误锚点，反而误导模型。<br>这不是说“特征无用”，而是说：<strong>加特征必须用验证集证明它有用，不能凭直觉</strong>。这个结论我保留在教程里，因为真实项目经常出现，而且面试官很吃这一套。</p>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">消融结果不能乱用</b>
+          <p>消融是在同一份数据、同一套超参下做的，只说明“在这份仿真数据上”。换城市、换季节、换测点层级，结论可能反转。正确表述是“我在本数据集上做了消融，发现……”，而不是“昨日同期特征没用”。</p>
+        </div>
+
+        <h2 id="error">误差分析：模型错在哪</h2>
+        <p>指标只告诉你“错了多少”，误差分析告诉你“为什么错、下一步改什么”。</p>
+
+        <div class="grid-3">
+          <div class="card tight"><h4>按小时看</h4><p>本项目 05:00 的 MAPE 最高（2.18%），09:00~11:00 最低（1.38%~1.46%）。夜间基数小，百分比被放大；白天规律稳定。</p></div>
+          <div class="card tight"><h4>按步长看</h4><p>horizon 1 到 24 的 MAPE 几乎持平（1.80% → 1.78%）。说明模型不是靠“最近值”硬撑，而是真的学到了形态。</p></div>
+          <div class="card tight"><h4>按月看</h4><p>10 月 1.89%、11 月 1.68%、12 月 1.75%。10 月含国庆假期，节假日样本少，是主要误差来源。</p></div>
+        </div>
+
+        <div class="callout how">
+          <b class="t">一个反直觉的观察</b>
+          <p>“昨日同期”基线随 horizon 变大而误差略降（5.41% → 5.17%），因为提前越久，目标时刻越接近“昨天同一时刻”的相位。而 LightGBM 几乎不随 horizon 变化（1.80% → 1.78%），说明它已经把 horizon 信息用起来了。这个细节可以在面试中展示你对数据的理解深度。</p>
+        </div>
+
+        <h2 id="save">模型保存：别只存模型文件</h2>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">保存与加载（特征顺序必须一起存）</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 保存</span>
+joblib.dump({<span class="s">"model"</span>: model, <span class="s">"features"</span>: FEATURES}, ART / <span class="s">"model.joblib"</span>)
+
+<span class="c"># 加载：一定要按保存时的列顺序重排</span>
+bundle = joblib.load(ART / <span class="s">"model.joblib"</span>)
+X = df[bundle[<span class="s">"features"</span>]].astype(<span class="k">float</span>)
+pred = bundle[<span class="s">"model"</span>].predict(X)
+</pre>
+        </div>
+
+        <p>LightGBM 按列位置读特征。如果上线时列顺序变了，模型不会报错，但会给出完全错误的结果——这是最隐蔽的线上事故之一。所以模型包里必须带特征名列表，并在推理前做断言校验。</p>
+
+        <div class="callout how">
+          <b class="t">延伸阅读</b>
+          <p>想让预测支撑决策，继续读 <a href="12-forecast-advanced.html">专题 B3 · 预测算法进阶</a>：概率预测、Conformal 区间、层级对账、Optuna 调参与漂移重训。</p>
+        </div>
+
+        <h2 id="faq">常见问题</h2>
+
+        <details class="qa" open>
+          <summary>Q1：为什么不用 LSTM / Transformer？</summary>
+          <div class="ans">在中小规模结构化时序上，树模型通常打平甚至更好，且训练快、可解释、部署简单。深度模型需要更多数据、更长调参周期，线上推理也更重。如果数据量到千万级、多测点联合建模、需要端到端学习形态，才值得上深度模型。面试时给出这个取舍逻辑，比说“我不会”好得多。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：24 个 horizon 一起训练，会不会互相干扰？</summary>
+          <div class="ans">会有一点，但 <code>horizon</code> 作为特征能让模型自己区分。另一种做法是训练 24 个独立模型（或分 4 个模型各管 6 小时），代价是训练成本高、样本少时更容易过拟合。本项目选择了单模型 + horizon 特征，效果可接受。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：节假日样本很少，怎么处理？</summary>
+          <div class="ans">三条路：① 日历特征里区分“节假日/调休/普通周末”；② 对节假日样本过采样或加权；③ 单独建一个节假日模型。本项目只做了 ①，所以 10 月（含国庆）误差最高——这是可以主动说出的改进点。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：线上没有真实温度怎么办？</summary>
+          <div class="ans">用气象 API 的预报值，并把“预报误差”作为输入不确定性考虑。工程上会缓存多来源预报（中央气象台、和风、ECMWF），做简单融合。模型训练时可以用“历史预报 + 实际值”配对，评估预报误差带来的影响。</div>
+        </details>
+        <details class="qa">
+          <summary>Q5：MAPE 1.78% 是不是太好了，不真实？</summary>
+          <div class="ans">在这份仿真数据上确实如此，原因有三：负荷生成过程本身规律性强、噪声可控、气象用了实测值。真实城市的日前预测 MAPE 通常在 2%~5%（省级可能更低，园区级更高）。所以要主动说明数据边界，不要把它包装成“通用水平”。</div>
+        </details>
+
+        <h2 id="check">自测</h2>
+        <ul class="checklist">
+          <li>说出五类特征，并各举一个本项目里的列名。</li>
+          <li>为什么 <code>horizon</code> 必须作为特征？</li>
+          <li>举出三种数据泄漏，并说明怎么避免。</li>
+          <li>LightGBM 的 <code>num_leaves</code> 和 <code>min_child_samples</code> 分别在控制什么？</li>
+          <li>消融实验里“去掉昨日同期反而更好”，你怎么解释？</li>
+          <li>如果线上特征列顺序变了，会发生什么？怎么防？</li>
+        </ul>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="03-data.html">← 上一章：数据工程</a>
+          <a class="btn-ghost" style="text-decoration:none" href="05-anomaly.html">下一章：异常用能识别 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 4 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

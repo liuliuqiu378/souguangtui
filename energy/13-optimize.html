@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>专题 B4 · 优化调度与需求响应 | 能源数据与算法工程师</title>
+<meta name="description" content="线性规划与混合整数规划、储能 SOC 建模、需量控制、需求响应基线、光伏与充电桩、虚拟电厂、鲁棒与随机优化、滚动调度与执行闭环。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">专题 B4 · <b>优化调度与需求响应</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">SPECIAL B4 · OPTIMIZATION</div>
+          <h1>优化调度与需求响应：把预测变成可执行的计划</h1>
+          <p class="lead">预测回答“会怎样”，优化回答“该怎么做”。这一章从零讲清线性规划怎么建模、储能约束怎么写、需量电费怎么进目标函数，以及一个计划从“算出来”到“执行下去”还差什么。</p>
+          <div class="page-meta">
+            <span>预计 100 分钟</span>
+            <span>前置：第 2、3 章；建议先读项目二</span>
+            <span>产出：能独立写出储能调度模型</span>
+            <span>性质：实践 / 决策</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先分清：预测、规则、优化</b>
+          <p><strong>预测</strong>给出一条未来曲线；<strong>规则</strong>说“谷段就充、峰段就放”；<strong>优化</strong>在所有约束下找“总成本最低”的那组动作。规则简单但常常不是最优——比如峰段放电放到一半，需量反而被抬高；优化能同时考虑电价、需量、SOC、效率与并网限制。</p>
+        </div>
+
+        <h2 id="model">优化建模四步：变量、目标、约束、求解</h2>
+        <div class="steps">
+          <div class="step"><h4>决策变量：你要决定什么</h4><p>每个时段的充电功率、放电功率、购电量、SOC、是否充放电（0/1）。变量必须是“能下发给设备”的量。</p></div>
+          <div class="step"><h4>目标函数：你在优化什么</h4><p>电度电费 + 基本电费（需量）+ 退化成本 + 偏差惩罚。注意单位统一：元、kW、kWh、小时。</p></div>
+          <div class="step"><h4>约束：什么不能做</h4><p>SOC 上下限、功率上限、充放电互斥、首末 SOC、并网容量、设备可用性。少一条，结果就可能“数学最优、物理不可行”。</p></div>
+          <div class="step"><h4>求解与校验</h4><p>选求解器，检查求解状态（最优/可行/不可行），再做物理校验：SOC 轨迹、功率、电费是否与手算一致。</p></div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一个判断模型好坏的标准</b>
+          <p>把优化结果拿给现场运维看，他能不能在 1 分钟内判断“这能不能执行”？如果他说“电池不可能同时充放”“这个点已经超容”“首末 SOC 对不上”，说明约束没建全；如果他说“这和我平时操作差不多，但更省”，模型就成立了。</p>
+        </div>
+
+        <h2 id="classes">LP、MILP 与求解器：先选对工具</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:12%">类型</th><th style="width:30%">特点</th><th style="width:26%">能源场景例子</th><th>求解难度</th></tr></thead>
+            <tbody>
+              <tr><td><strong>LP</strong></td><td>目标与约束都是线性的，变量连续</td><td>储能功率分配（允许同时充放时）</td><td>秒级，规模可很大</td></tr>
+              <tr><td><strong>MILP</strong></td><td>含 0/1 整数变量</td><td>充放电互斥、机组启停、开关选择</td><td>可能指数级，需控制规模</td></tr>
+              <tr><td><strong>QCP / NLP</strong></td><td>二次或非线性约束</td><td>交流潮流、效率曲线</td><td>更难，通常做线性化</td></tr>
+              <tr><td><strong>随机 / 鲁棒</strong></td><td>考虑不确定性</td><td>光伏、负荷、电价不确定</td><td>规模成倍增加</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">求解器</th><th style="width:16%">许可</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><strong>HiGHS</strong></td><td>开源</td><td>性能好，PuLP/scipy 都可调用，推荐默认</td></tr>
+              <tr><td><strong>CBC</strong></td><td>开源</td><td>PuLP 自带，够用但慢一些</td></tr>
+              <tr><td><strong>SCIP</strong></td><td>开源（学术免费）</td><td>MILP 强，适合复杂约束</td></tr>
+              <tr><td><strong>Gurobi / CPLEX</strong></td><td>商业</td><td>大规模工业级，需授权</td></tr>
+              <tr><td><strong>OR-Tools</strong></td><td>开源</td><td>Google 的建模+求解封装，CP-SAT 适合排程</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="storage">储能建模：五个约束缺一不可</h2>
+        <p>储能是最典型的“看起来简单、建起来容易错”的对象。下面五条是底线。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">约束</th><th style="width:38%">数学表达</th><th>为什么必须有</th></tr></thead>
+            <tbody>
+              <tr><td><strong>SOC 递推</strong></td><td><code>SOC[t+1] = SOC[t] + η·ch[t]·Δt − dis[t]/η·Δt</code></td><td>能量守恒；效率要分别作用在充和放上</td></tr>
+              <tr><td><strong>SOC 上下限</strong></td><td><code>SOC_min ≤ SOC[t] ≤ SOC_max</code></td><td>保护电池；项目用 10%~90%</td></tr>
+              <tr><td><strong>功率上限</strong></td><td><code>0 ≤ ch[t], dis[t] ≤ P_max</code></td><td>PCS 与并网容量限制</td></tr>
+              <tr><td><strong>充放互斥</strong></td><td><code>ch[t] ≤ P_max·z[t]</code>，<code>dis[t] ≤ P_max·(1−z[t])</code></td><td>物理上不能同时充放；否则模型会“免费搬电”</td></tr>
+              <tr><td><strong>首末 SOC</strong></td><td><code>SOC[0] = SOC[T] = 50%</code></td><td>保证可持续，不把电池“用空”换收益</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：不写互斥，模型会同时充放</b>
+          <p>如果允许 <code>ch</code> 和 <code>dis</code> 同时为正，模型可以在同一时段“充 100 kW、放 100 kW”，只损失效率，却可能骗过需量约束或制造虚假的 SOC 平衡。规模小时收益看起来不大，但这是典型的“数学最优、设备不可行”。<strong>只有在负电价、弃光补贴等特殊价格结构下，纯 LP 才可能真的选择同时充放</strong>——项目二没有这些情形，所以用了更简单的 LP。</p>
+        </div>
+
+        <h2 id="demand">需量控制：最容易被忽略的“第二笔账”</h2>
+        <p>峰谷套利省的是电度电费，需量控制省的是基本电费。两者可能冲突：为了套利在峰段前多充，可能把峰值抬高，反而多交需量费。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">把最大需量写进目标函数</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 引入一个变量 demand，表示计费周期内的最大购电功率</span>
+demand = LpVariable(<span class="s">"demand"</span>, lowBound=<span class="n">0</span>)
+
+<span class="c"># 每个时段的购电功率都不超过 demand</span>
+<span class="k">for</span> t <span class="k">in</span> T:
+    prob += buy[t] &lt;= demand
+
+<span class="c"># 目标：电度电费 + 需量电费（元/kW·月 或 元/kW·日）</span>
+prob += (lpSum(price[t] * buy[t] * dt <span class="k">for</span> t <span class="k">in</span> T)
+         + demand_price * demand)
+</pre>
+        </div>
+
+        <p>这个写法有一个前提：需量周期与优化窗口一致。如果需量按月统计，而你只优化一天，就需要把“历史月最大需量”作为已知下界代入，否则会低估需量成本。项目二做了简化：按日需量计价（1.2 元/kW·日），因此可以直接在日窗口内建模。</p>
+
+        <div class="callout field">
+          <b class="t">削峰与套利的优先级</b>
+          <p>多数园区应该<strong>先保证不超需量，再谈套利</strong>。因为需量费是确定的、按月收；套利收益受价差和效率影响，且可能被需量上升抵消。模型里可以通过给需量项更高的权重来体现这个优先级，而不是靠事后人工调整。</p>
+        </div>
+
+        <h2 id="lp">完整模型：储能日前调度（PuLP 写法）</h2>
+        <p>下面用 PuLP 写一遍，结构最直观。项目二实际用的是 <code>scipy.optimize.linprog</code>（HiGHS）的纯 LP 版本：在电价为正、效率小于 1 的条件下，“同时充放”只会额外损失能量，不可能更优，所以可以省掉 0/1 变量。参数与结果都对得上：3000 kWh、1000 kW、单程效率 0.95、SOC 10%~90%、首末 50%。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">dispatch.py · 储能日前优化（节选）</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> pulp <span class="k">as</span> pl
+
+T = <span class="n">96</span>                      <span class="c"># 一天 96 个 15 分钟时段</span>
+dt = <span class="n">0.25</span>                   <span class="c"># 小时</span>
+CAP, PMAX, ETA = <span class="n">3000</span>, <span class="n">1000</span>, <span class="n">0.95</span>
+SOC_MIN, SOC_MAX, SOC0 = <span class="n">0.1</span>, <span class="n">0.9</span>, <span class="n">0.5</span>
+
+prob = pl.LpProblem(<span class="s">"storage"</span>, pl.LpMinimize)
+ch  = [pl.LpVariable(f<span class="s">"ch{t}"</span>,  <span class="n">0</span>, PMAX) <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T)]
+dis = [pl.LpVariable(f<span class="s">"dis{t}"</span>, <span class="n">0</span>, PMAX) <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T)]
+soc = [pl.LpVariable(f<span class="s">"soc{t}"</span>, SOC_MIN*CAP, SOC_MAX*CAP) <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T+<span class="n">1</span>)]
+z   = [pl.LpVariable(f<span class="s">"z{t}"</span>, cat=<span class="s">"Binary"</span>) <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T)]
+buy = [pl.LpVariable(f<span class="s">"buy{t}"</span>, lowBound=<span class="n">0</span>) <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T)]
+demand = pl.LpVariable(<span class="s">"demand"</span>, lowBound=<span class="n">0</span>)
+
+prob += soc[<span class="n">0</span>] == SOC0 * CAP
+prob += soc[T] == SOC0 * CAP
+
+<span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T):
+    prob += soc[t+<span class="n">1</span>] == soc[t] + ETA*ch[t]*dt - dis[t]*dt/ETA
+    prob += ch[t]  &lt;= PMAX * z[t]
+    prob += dis[t] &lt;= PMAX * (<span class="n">1</span> - z[t])
+    prob += buy[t] == load[t] + ch[t] - dis[t] - pv[t]
+    prob += buy[t] &lt;= demand
+    prob += buy[t] &gt;= <span class="n">0</span>
+
+prob += (pl.lpSum(price[t] * buy[t] * dt <span class="k">for</span> t <span class="k">in</span> <span class="k">range</span>(T))
+         + <span class="n">1.2</span> * demand)
+prob.solve(pl.HiGHS(msg=<span class="k">False</span>))
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：目标里的时间单位</b>
+          <p><code>price</code> 是元/kWh，<code>buy</code> 是 kW，必须乘 <code>dt=0.25</code> 才是元。忘了乘，收益会放大 4 倍；乘错（比如用 15 分钟却乘 1），收益会缩小。这类错误在报告里最致命，因为数字看起来“很合理”。</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="stat"><div class="num">87.1<small> kW</small></div><div class="lbl">项目二平均削峰</div></div>
+          <div class="stat teal"><div class="num">4.99<small>%</small></div><div class="lbl">60 天电费下降</div></div>
+          <div class="stat amber"><div class="num">+29,724<small> kWh</small></div><div class="lbl">购电量增加（效率损耗）</div></div>
+        </div>
+        <p>这三个数放在一起才完整：电费降了 4.99%，但购电量增加了，因为往返效率有损耗。只报“省了多少钱”不报“多买了多少电”，就是选择性呈现。</p>
+
+        <h2 id="dr">需求响应：基线算错，响应白做</h2>
+        <p>需求响应的结算逻辑是“响应量 = 基线 − 实际用电”。所以基线方法直接决定收益。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">基线方法</th><th style="width:38%">做法</th><th>特点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>10 中取 3</strong></td><td>响应日前 10 个工作日中，取负荷最高的 3 天同时段平均</td><td>简单、常见；对天气变化不敏感</td></tr>
+              <tr><td><strong>高 5 中 10</strong></td><td>前 5 个工作日与前 10 个工作日的均值取较高者</td><td>更保守，减少“基线虚高”</td></tr>
+              <tr><td><strong>回归基线</strong></td><td>用温度、星期、历史负荷拟合</td><td>更准；需要足够历史与特征</td></tr>
+              <tr><td><strong>机器学习基线</strong></td><td>用预测模型给出“不响应时的负荷”</td><td>最灵活；可解释性和审计要求高</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：基线被“做低”</b>
+          <p>如果响应前几天的负荷被人为压低，基线就会偏低，响应量看起来变小甚至为负。反过来，基线方法也可能被利用来“刷补偿”。所以真实项目里基线要可审计、要固定规则、要保留原始数据，不能由算法随意调整——这是合规问题，不只是技术问题。</p>
+        </div>
+
+        <h3>可调量怎么估</h3>
+        <p>需求响应不是“想少用就能少用”。可调量取决于：哪些负荷可中断（空调、照明、非关键产线）、能停多久、恢复时会不会反弹、用户体验是否可接受。工程上通常分三档：</p>
+        <div class="grid-3">
+          <div class="card tight"><h4>秒级~分钟级</h4><p>储能、变频空调、快速切断的非关键负荷。适合调频/爬坡。</p></div>
+          <div class="card tight"><h4>15 分钟~1 小时</h4><p>照明、部分产线、充电桩降功率。最常见的 DR 场景。</p></div>
+          <div class="card tight"><h4>小时级以上</h4><p>检修调整、生产排程、蓄冷蓄热。适合长时间削峰。</p></div>
+        </div>
+
+        <h2 id="pv">光伏、充电桩与 V2G</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">对象</th><th style="width:36%">建模要点</th><th>常见问题</th></tr></thead>
+            <tbody>
+              <tr><td><strong>光伏</strong></td><td>出力上限 = 预测出力；弃光要显式建模</td><td>把光伏当负负荷，忽略了弃光与限功率</td></tr>
+              <tr><td><strong>充电桩</strong></td><td>到达时间、离开时间、电量需求、功率上限</td><td>只做有序充电，不考虑用户离开约束</td></tr>
+              <tr><td><strong>V2G</strong></td><td>车辆可作为储能，但要留足出行电量</td><td>忽略电池损耗与用户接受度</td></tr>
+              <tr><td><strong>净负荷</strong></td><td>购电 = 负荷 − 光伏 + 充电 − 放电</td><td>符号错，导致“越充越少”</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">“鸭形曲线”是什么</b>
+          <p>光伏占比高时，净负荷在午间被压得很低，傍晚光伏退坡、负荷上升，形成陡峭的爬坡，形状像鸭子的背和脖子。它带来两个问题：午间可能弃光或负电价，傍晚爬坡需要快速资源。储能正好填这个缺口，这也是“光储”经常一起出现的原因。</p>
+        </div>
+
+        <h2 id="vpp">虚拟电厂：把分散资源聚成一个“电厂”</h2>
+        <p>虚拟电厂（VPP）不发电，它聚合可调资源（储能、充电桩、空调、工业负荷），在市场上像一个电厂一样申报和响应，赚取价差、补贴或辅助服务费用。</p>
+
+        <div class="steps">
+          <div class="step"><h4>资源聚合</h4><p>把多个园区的储能、可中断负荷汇总，形成可调容量曲线。要区分“可上调”和“可下调”。</p></div>
+          <div class="step"><h4>预测与申报</h4><p>预测基线负荷与可调量，按市场规则申报。申报过高会被考核，过低则浪费容量。</p></div>
+          <div class="step"><h4>实时调度</h4><p>按指令分解到各资源，考虑通信延迟、设备响应时间、用户约束。</p></div>
+          <div class="step"><h4>计量与结算</h4><p>按基线核算响应量，处理偏差、考核、补偿。数据要可审计。</p></div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">VPP 的技术难点不在优化，而在“可信”</b>
+          <p>聚合资源的可调量是估计出来的，实际响应可能打折；通信中断、设备拒动、用户反悔都会导致偏差。所以 VPP 系统里，<strong>可观测性、指令确认、兜底策略</strong>比优化算法更关键。面试如果只讲“我用 LP 优化”，会被追问“资源没响应怎么办”。</p>
+        </div>
+
+        <h2 id="uncertain">不确定性：预测错了，计划还能用吗</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">方法</th><th style="width:38%">思路</th><th>代价</th></tr></thead>
+            <tbody>
+              <tr><td><strong>确定性</strong></td><td>用点预测直接优化</td><td>简单；预测偏差大时计划失效</td></tr>
+              <tr><td><strong>场景法</strong></td><td>生成多个负荷/光伏场景，优化期望成本</td><td>场景数增加，求解变慢</td></tr>
+              <tr><td><strong>鲁棒优化</strong></td><td>假设最坏情况在不确定集内</td><td>保守，可能牺牲收益</td></tr>
+              <tr><td><strong>机会约束</strong></td><td>允许小概率越限</td><td>建模复杂，需要分布假设</td></tr>
+              <tr><td><strong>CVaR</strong></td><td>优化尾部风险</td><td>适合对极端损失敏感的场景</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">工程上更常用的折中：滚动优化</b>
+          <p>不做复杂的随机优化，而是每 15 分钟用最新预测重新优化未来 24 小时（滚动时域，MPC 思想）。预测误差被不断修正，计划自然收敛。代价是需要稳定的在线求解与指令下发链路。</p>
+        </div>
+
+        <h2 id="exec">从计划到执行：还差最后一公里</h2>
+        <div class="steps">
+          <div class="step"><h4>计划可执行性校验</h4><p>检查功率、SOC、并网容量、设备状态；对不可行点做降级（例如限制充放功率）。</p></div>
+          <div class="step"><h4>指令下发与确认</h4><p>通过 PCS/EMS 下发功率指令，等待设备确认；超时重试或告警。不能假定“发了就会执行”。</p></div>
+          <div class="step"><h4>闭环修正</h4><p>每 15 分钟读取实际功率与 SOC，与计划比对；偏差大就重新优化。</p></div>
+          <div class="step"><h4>人工干预与兜底</h4><p>检修、消防、并网限制时，人工接管必须优先；算法要有“退出”开关。</p></div>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：把优化结果当成“必然发生”</b>
+          <p>报告里写“节省 14.7 万元”，但实际执行率只有 60%，真实收益就大打折扣。项目二的结果是“按计划完全执行”的口径，正文里已明确。真实项目必须同时报<strong>计划收益</strong>与<strong>实际收益</strong>，并分析差额来自预测误差、执行偏差还是电价变化。</p>
+        </div>
+
+        <h2 id="pit">常见坑清单</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:34%">坑</th><th>后果</th><th>正确做法</th></tr></thead>
+            <tbody>
+              <tr><td>效率只乘一次</td><td>收益高估</td><td>充电乘 η，放电除 η</td></tr>
+              <tr><td>允许同时充放</td><td>虚假收益、设备不可行</td><td>0/1 互斥或 big-M</td></tr>
+              <tr><td>忘记首末 SOC</td><td>把电池用空换收益</td><td>首末相等，或加终端价值</td></tr>
+              <tr><td>需量只算日窗口</td><td>月度需量费低估</td><td>用历史月最大需量做下界</td></tr>
+              <tr><td>电价单位错</td><td>收益差 4 倍</td><td>统一元/kWh、kW、小时</td></tr>
+              <tr><td>忽略并网容量</td><td>计划超容，无法执行</td><td>购电上限约束</td></tr>
+              <tr><td>忽略电池退化</td><td>长期收益被高估</td><td>加循环成本或限制日循环次数</td></tr>
+              <tr><td>只优化不闭环</td><td>计划与执行脱节</td><td>滚动优化 + 偏差告警</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="qa">常见问题</h2>
+        <details class="qa">
+          <summary>Q1：为什么不直接用规则“谷充峰放”？</summary>
+          <div class="ans">规则在简单场景下接近最优，但遇到需量约束、光伏、多段电价、SOC 边界时容易失效。规则无法同时权衡“套利收益”和“需量成本”，也无法处理“今天要不要留电给明天”的问题。优化不是更高级，而是能显式表达权衡。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：MILP 太慢怎么办？</summary>
+          <div class="ans">先看规模：96 个时段、1 个储能，MILP 通常秒级。变慢常见于多储能、多场景、细粒度。可以：① 用 LP 松弛再修复；② 减少 0/1 变量（用价格差排除同时充放）；③ 用滚动窗口；④ 换 HiGHS/Gurobi。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：电池衰减怎么进模型？</summary>
+          <div class="ans">简化做法是给每 kWh 吞吐加一个退化成本（元/kWh），或限制日循环次数；精细做法是用 SOH 曲线、循环深度与温度建模。项目二没有计退化成本，这是一个已知简化，面试时要主动说明。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：需求响应的收益怎么算才靠谱？</summary>
+          <div class="ans">先确定基线方法与补偿单价，再算“响应量 × 单价 − 生产损失 − 恢复反弹成本”。特别注意：如果响应导致之后反弹，净收益可能为负；如果基线本身被下压，响应量会被高估。</div>
+        </details>
+
+        <h2 id="check">自测：能不能独立建模</h2>
+        <ul class="checklist">
+          <li>能写出储能 SOC 递推式，并说明效率放在分子还是分母。</li>
+          <li>能解释为什么需要充放电互斥，以及 big-M 怎么写。</li>
+          <li>能写出“最大需量”进入目标函数的两行约束。</li>
+          <li>能说清项目二为什么电费下降但购电量增加。</li>
+          <li>能解释需求响应基线为什么会被“做低”，以及怎么防。</li>
+          <li>能说出滚动优化相比一次性优化的好处与代价。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">下一步读什么</b>
+          <p>模型和计划都有了，最后补“怎么稳定交付”：<a href="14-engineering.html">专题 B5 · 算法工程实践</a>。</p>
+        </div>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 专题 B4 · 数据与指标均可复现
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

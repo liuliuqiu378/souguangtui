@@ -1,0 +1,24 @@
+{
+  "storage": {
+    "E_kWh": 3000.0,
+    "P_kW": 1000.0,
+    "eta": 0.95,
+    "soc_range": [
+      0.1,
+      0.9
+    ]
+  },
+  "days": 60,
+  "energy_cost_base_yuan": 2674763.0,
+  "energy_cost_opt_yuan": 2533563.0,
+  "demand_cost_base_yuan": 280456.0,
+  "demand_cost_opt_yuan": 274181.0,
+  "total_base_yuan": 2955219.0,
+  "total_opt_yuan": 2807744.0,
+  "saving_yuan": 147475.0,
+  "saving_pct": 4.99,
+  "kwh_from_grid_change": 29724.0,
+  "carbon_change_t": 16.95,
+  "avg_peak_reduction_kw": 87.1,
+  "sample_day": "2024-08-15"
+}

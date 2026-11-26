@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 章 · 数据工程与数据质量治理 | 能源数据与算法工程师</title>
+<meta name="description" content="六类脏数据的识别与处理、缺失机制、MAD/IQR 异常检测、质量评分体系、InfluxDB 与 TimescaleDB 实操，以及完整清洗流水线。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 3 章 · <b>数据工程与数据质量治理</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 03 · DATA ENGINEERING</div>
+          <h1>数据工程与数据质量治理</h1>
+          <p class="lead">在工业能源场景里，<strong>数据清洗不是预处理，而是产品的一部分</strong>。这一章给你一套能直接照做的判断标准：什么该补、什么该扔、什么该报警，以及怎么把“数据靠不靠谱”变成可以给业务看的分数。</p>
+          <div class="page-meta">
+            <span>预计 80 分钟</span>
+            <span>前置：第 2 章</span>
+            <span>产出：清洗脚本 + 质量报表</span>
+          </div>
+        </div>
+
+        <h2 id="why">先算一笔时间账</h2>
+        <p>项目一的原始数据是 2 年、15 分钟粒度，约 7 万行；项目二是 40 个测点 × 60 天 × 96 点，23 万行。生成脚本里我故意注入了缺失、重复、负值、零值、倍率错误、卡死和尖峰——因为真实电表数据就长这样。</p>
+
+        <div class="grid-3">
+          <div class="stat"><div class="num">23.06<small> 万</small></div><div class="lbl">项目二原始读数行数</div></div>
+          <div class="stat amber"><div class="num">0.68<small>%</small></div><div class="lbl">原始缺失率</div></div>
+          <div class="stat teal"><div class="num">0.03<small>%</small></div><div class="lbl">补齐后残留缺失率</div></div>
+        </div>
+
+        <p>听起来 0.68% 很小？换算一下：40 个测点里，每天约有 <strong>26 个点</strong>是空的。如果直接 <code>dropna()</code>，一天 96 点会变成 95 点、94 点，滞后特征 <code>shift(96)</code> 就再也不对应“昨天同一时刻”了——误差会以你察觉不到的方式扩散。</p>
+
+        <div class="callout what">
+          <b class="t">数据治理到底治理什么</b>
+          <p>三件事：<strong>完整性</strong>（该有的有没有）、<strong>准确性</strong>（数值对不对）、<strong>一致性</strong>（口径统一不统一）。岗位 JD 里的“建立数据质量监控体系”，就是把这三件事变成每天自动跑、自动出报表的机制。</p>
+        </div>
+
+        <h2 id="dirty">六类脏数据：长什么样，怎么处理</h2>
+        <p>下面每一类都配了项目里的真实数据形态。先认脸，再谈处理。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:13%">类型</th><th style="width:30%">真实表现</th><th style="width:26%">怎么发现</th><th>怎么处理</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>缺失</strong></td>
+                <td>某时刻没有记录；或整段 2~8 小时为空</td>
+                <td>reindex 后 <code>isna()</code>；统计连续缺失长度</td>
+                <td>短缺口（≤2h）插值；长缺口置空 + 缺失标记 + 质量告警</td>
+              </tr>
+              <tr>
+                <td><strong>重复</strong></td>
+                <td>同一测点同一时刻出现两行，值略有差异</td>
+                <td><code>duplicated(["meter_id","ts"])</code></td>
+                <td>保留最后一条（采集时间最新）或取均值，并计数上报</td>
+              </tr>
+              <tr>
+                <td><strong>越界 / 非法值</strong></td>
+                <td>负功率、超过变压器容量 3 倍、单位写成 W</td>
+                <td>按容量上下限、物理常识过滤</td>
+                <td>置空而不是截断——截断会制造虚假的“满功率平台”</td>
+              </tr>
+              <tr>
+                <td><strong>卡死</strong></td>
+                <td>连续 8 小时数值一字不差（如恒为 12.30）</td>
+                <td>滚动窗口内 <code>nunique()==1</code> 或标准差为 0</td>
+                <td>标记为传感器故障，不参与建模；告警到运维</td>
+              </tr>
+              <tr>
+                <td><strong>倍率错误</strong></td>
+                <td>整条曲线突然变成原来的 3 倍，持续多天</td>
+                <td>同业比值 <code>peer_ratio</code> 突变；与自身历史比</td>
+                <td>不要自动除 3，先告警核查；确认后按台账修正</td>
+              </tr>
+              <tr>
+                <td><strong>尖峰 / 归零</strong></td>
+                <td>单个点突然 ×7，或突然变 0 又恢复</td>
+                <td>与前后点差分、滚动 MAD、容量上限</td>
+                <td>单点置空插值；若伴随设备状态则保留并标注</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>原始数据长这样</h3>
+        <p>这是项目二 <code>meter_readings_raw.csv</code> 的前几行。真实数据不会告诉你哪行有问题，你得自己找。</p>
+
+        <div class="data-table table-wrap">
+          <table>
+            <thead><tr><th>meter_id</th><th>ts</th><th>p_kw</th><th>temp_c</th><th>备注</th></tr></thead>
+            <tbody>
+              <tr><td>M001</td><td>2024-07-01 00:00:00</td><td>9.41</td><td>22.8</td><td>正常</td></tr>
+              <tr><td>M001</td><td>2024-07-01 00:15:00</td><td>9.46</td><td>22.9</td><td>正常</td></tr>
+              <tr><td>M001</td><td>2024-07-01 00:30:00</td><td>9.77</td><td>22.1</td><td>正常</td></tr>
+              <tr><td>M003</td><td>2024-07-01 03:15:00</td><td>-0.42</td><td>21.7</td><td class="bad">负值，非法</td></tr>
+              <tr><td>M007</td><td>2024-07-19 02:00:00</td><td>0.0</td><td>26.4</td><td class="bad">深夜归零，可疑</td></tr>
+              <tr><td>M011</td><td>2024-07-20 13:00:00</td><td>63.0</td><td>31.2</td><td class="bad">倍率 ×3 后异常放大</td></tr>
+              <tr><td>M018</td><td>2024-08-05 10:00:00</td><td>12.30</td><td>29.8</td><td class="bad">连续 8h 恒为 12.30（卡死）</td></tr>
+              <tr><td>M022</td><td>2024-08-03 18:15:00</td><td>412.7</td><td>33.1</td><td class="bad">尖峰，容量仅 180 kW</td></tr>
+              <tr><td>M001</td><td>2024-07-01 00:00:00</td><td>9.43</td><td>22.8</td><td class="bad">重复记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">不要一看到异常就删</b>
+          <p>“尖峰”和“窃电”在数值上都表现为异常，但业务含义完全相反：前者可能是采集错误，后者是要追缴电费的线索。清洗阶段的目标是<strong>区分“数据错误”和“业务异常”</strong>，而不是把所有异常都抹平。项目二的做法是：数据错误在清洗阶段处理，业务异常保留并交给检测模块。</p>
+        </div>
+
+        <h2 id="missing">缺失值：先判断机制，再选方法</h2>
+        <p>统计学把缺失分成三类。你不需要背名字，但需要知道<strong>为什么不能无脑插值</strong>。</p>
+
+        <div class="grid-3">
+          <div class="card tight"><h4>完全随机缺失</h4><p>和任何变量都无关，纯粹是传输丢包。插值风险最小。</p></div>
+          <div class="card tight"><h4>随机缺失</h4><p>缺失与已观测到的量有关。比如高温时段采集器更容易掉线。</p></div>
+          <div class="card tight"><h4>非随机缺失</h4><p>缺失本身带信息。比如设备断电才没有读数——这个“空”本身就是故障信号。</p></div>
+        </div>
+
+        <p>所以处理前先问：<strong>这个缺口有多长？用来做什么？</strong></p>
+
+        <div class="steps">
+          <div class="step"><h4>≤ 2 个点（30 分钟）</h4><p>线性插值。对负荷这种连续量足够合理。</p></div>
+          <div class="step"><h4>2 个点 ~ 2 小时</h4><p>优先用“昨日同一时刻 + 今日前后点”混合填充；同时打 <code>is_imputed</code> 标记。</p></div>
+          <div class="step"><h4>超过 2 小时</h4><p>不要造数据。置空，并在日特征里记录 <code>completeness</code>；该天的样本可降权或剔除。</p></div>
+          <div class="step"><h4>整表离线</h4><p>单独告警，走补采流程。算法侧只做标记，不做修补。</p></div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">项目一的清洗函数（节选）</span><button class="copy">复制</button></div>
+          <pre><span class="k">def</span> clean_load(df):
+    df = df.drop_duplicates(subset=<span class="s">"ts"</span>, keep=<span class="s">"last"</span>).sort_values(<span class="s">"ts"</span>)
+    idx = pd.date_range(df.ts.min(), df.ts.max(), freq=<span class="s">"15min"</span>)
+    s = df.set_index(<span class="s">"ts"</span>)[<span class="s">"load_mw"</span>].reindex(idx)
+
+    <span class="c"># 非法值：负值、超过历史 99.9 分位的 1.6 倍</span>
+    cap = s.quantile(<span class="n">0.999</span>) * <span class="n">1.6</span>
+    s[(s &lt; <span class="n">0</span>) | (s &gt; cap)] = np.nan
+
+    <span class="c"># 短缺口插值（上限 8 个点 = 2 小时）</span>
+    s = s.interpolate(method=<span class="s">"time"</span>, limit=<span class="n">8</span>)
+
+    <span class="c"># 长缺口用昨日同期兜底，并保留标记</span>
+    miss = s.isna()
+    s = s.fillna(s.shift(<span class="n">96</span>))
+    <span class="k">return</span> s.to_frame(<span class="s">"load_mw"</span>).assign(is_imputed=miss.values)
+</pre>
+        </div>
+
+        <div class="callout how">
+          <b class="t">为什么用“昨日同期”兜底而不是均值</b>
+          <p>负荷有强日周期，昨天同一时刻的值比全局均值更接近真实。均值填充会把早晚峰削平，直接破坏模型要学的形态。这是时序插值和表格插值最大的区别。</p>
+        </div>
+
+        <h2 id="outlier">异常值：三种统计方法 + 一条业务规则</h2>
+        <p>不要只用一个方法。它们各自假设不同，组合起来才稳。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">方法</th><th style="width:34%">判断规则</th><th>适用与局限</th></tr></thead>
+            <tbody>
+              <tr><td><strong>3σ</strong></td><td>偏离均值超过 3 倍标准差</td><td>假设近似正态。负荷有双峰、不服从正态，容易漏掉峰谷处的异常</td></tr>
+              <tr><td><strong>IQR</strong></td><td>超出 Q1−1.5·IQR 或 Q3+1.5·IQR</td><td>不依赖分布，稳健；但对强周期数据仍会把“正常的峰”判为异常</td></tr>
+              <tr><td><strong>MAD</strong></td><td>|x − median| / (1.4826·MAD) &gt; 3.5</td><td>比 σ 更抗极端值，适合做单点尖峰检测</td></tr>
+              <tr><td><strong>业务规则</strong></td><td>超出变压器容量、负值、连续恒定</td><td>最可靠。物理约束永远优先于统计规则</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">MAD 单点检测（可直接复用）</span><button class="copy">复制</button></div>
+          <pre><span class="k">def</span> mad_flags(s, k=<span class="n">3.5</span>, window=<span class="n">96</span>):
+    med = s.rolling(window, min_periods=window // <span class="n">2</span>).median()
+    mad = (s - med).abs().rolling(window, min_periods=window // <span class="n">2</span>).median()
+    score = (s - med).abs() / (<span class="n">1.4826</span> * mad.replace(<span class="n">0</span>, np.nan))
+    <span class="k">return</span> score &gt; k
+
+<span class="c"># 用法：只标记，不直接删；结合容量上限一起看</span>
+flag = mad_flags(s) &amp; (s &gt; capacity * <span class="n">0.9</span>)
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">滚动窗口的经典错误</b>
+          <p>用“全序列中位数”做基线，会把夏季整体高负荷判成异常；用“未来窗口”又造成泄漏。正确做法是<strong>只用当前时刻之前的数据</strong>计算基线与阈值——这和模型训练的原则一致。</p>
+        </div>
+
+        <h2 id="quality">数据质量指标体系</h2>
+        <p>“数据质量”不能只靠感觉。要拆成可计算的指标，每天出报表，让问题自己浮出来。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">指标</th><th style="width:30%">计算</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><strong>完整率</strong></td><td>有效点数 / 应有点数</td><td>最基础，项目二的 <code>score</code> 就是它</td></tr>
+              <tr><td><strong>越界率</strong></td><td>超出物理范围的点 / 总点数</td><td>反映采集或倍率问题</td></tr>
+              <tr><td><strong>重复率</strong></td><td>重复时间戳数 / 总行数</td><td>网关重传的典型症状</td></tr>
+              <tr><td><strong>突变率</strong></td><td>相邻点变化超过阈值次数 / 总点数</td><td>尖峰与归零</td></tr>
+              <tr><td><strong>恒定率</strong></td><td>滑动窗口内方差为 0 的占比</td><td>传感器卡死</td></tr>
+              <tr><td><strong>及时率</strong></td><td>按时到达的记录 / 应到记录</td><td>影响实时预测能否用上最新数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>项目二实际输出的质量报表节选（<code>quality_report.csv</code>）。注意：这份报表是在<strong>补齐后</strong>统计的，所以只剩少量残留缺失——这也说明“补齐”本身会掩盖问题，因此必须同时保留原始缺失率。</p>
+
+        <div class="data-table table-wrap">
+          <table>
+            <thead><tr><th>meter_id</th><th>missing_rate</th><th>capacity_kw</th><th>meter_type</th><th>score</th></tr></thead>
+            <tbody>
+              <tr><td>M001</td><td>0.0000</td><td>215</td><td>office</td><td>100.0</td></tr>
+              <tr><td>M014</td><td>0.00417</td><td>287</td><td>factory</td><td>99.6</td></tr>
+              <tr><td>M015</td><td>0.00417</td><td>427</td><td>factory</td><td>99.6</td></tr>
+              <tr><td>M018</td><td>0.00434</td><td>315</td><td>factory</td><td>99.6</td></tr>
+              <tr><td>M029</td><td>0.0000</td><td>286</td><td>mall</td><td>100.0</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout field">
+          <b class="t">诚实说明：这个 score 太简化</b>
+          <p>项目里 <code>score = 100 × (1 − missing_rate)</code>，只考虑了完整性。真实系统中应加权组合完整率、越界率、突变率、及时率，并按测点类型设不同权重。教程保留简单版本是为了让你先跑通链路；面试时主动说出“这个分数还可以怎么改进”，反而是加分项。</p>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p2_quality.png" alt="40 个测点的缺失率排名柱状图">
+          <figcaption><b>质量报表可视化（缺失率 TOP18）。</b>红色为明显偏离的测点，通常对应采集器故障或长时间离线。</figcaption>
+          <div class="fig-how"><b>业务用法：</b>这张图直接发给运维，比给一堆数字有效。它回答的是“今天先修哪几块表”。</div>
+        </figure>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_quality_dist.png" alt="项目一负荷数据质量分布">
+          <figcaption><b>项目一的质量分布。</b>包含负荷水平分布与缺失/异常占比，用来判断“清洗前到底脏到什么程度”。</figcaption>
+          <div class="fig-how"><b>看图顺序：</b>先看分布有没有双峰（可能混入了两种工况），再看尾部有多少越界点，最后决定阈值卡在哪。</div>
+        </figure>
+
+        <h2 id="db">时序数据库：InfluxDB 与 TimescaleDB</h2>
+        <p>为什么不用 MySQL 存读数？因为时序数据是“写多读少、按时间范围查、按标签过滤、旧数据要降采样”。关系库也能存，但索引膨胀、聚合慢、保留策略麻烦。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">维度</th><th style="width:42%">InfluxDB</th><th>TimescaleDB</th></tr></thead>
+            <tbody>
+              <tr><td>数据模型</td><td>measurement + tag + field + timestamp</td><td>普通 PostgreSQL 表 + hypertable 分区</td></tr>
+              <tr><td>查询语言</td><td>Flux / InfluxQL</td><td>标准 SQL</td></tr>
+              <tr><td>优势</td><td>写入吞吐高，保留策略与降采样开箱即用</td><td>生态成熟，能 join 业务表，SQL 门槛低</td></tr>
+              <tr><td>适合</td><td>纯测点海量写入、监控大屏</td><td>需要和台账、工单、用户表关联分析</td></tr>
+              <tr><td>本项目</td><td>可存 <code>meter_readings</code></td><td>可存测点读数 + 测点台账 + 告警</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>InfluxDB：写入与查询</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">InfluxDB 示例（Flux）</span><button class="copy">复制</button></div>
+          <pre><span class="c">// 写入：行协议（line protocol）</span>
+meter_readings,meter_id=M001,park=P01,type=office p_kw=45.2,temp_c=28.4 1720000000000000000
+
+<span class="c">// 查询：取 M001 最近 7 天，按小时均值</span>
+<span class="k">from</span>(bucket: <span class="s">"ems"</span>)
+  |&gt; range(start: -7d)
+  |&gt; filter(fn: (r) =&gt; r._measurement == <span class="s">"meter_readings"</span> and r.meter_id == <span class="s">"M001"</span>)
+  |&gt; aggregateWindow(every: 1h, fn: mean, createEmpty: <span class="k">false</span>)
+  |&gt; yield(name: <span class="s">"hourly_mean"</span>)
+</pre>
+        </div>
+
+        <h3>TimescaleDB：建表与降采样</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">TimescaleDB 示例（SQL）</span><button class="copy">复制</button></div>
+          <pre><span class="c">-- 普通表变成超表：按时间自动分区</span>
+<span class="k">CREATE TABLE</span> meter_readings (
+  ts        timestamptz <span class="k">NOT NULL</span>,
+  meter_id  text        <span class="k">NOT NULL</span>,
+  p_kw      double precision,
+  temp_c    double precision
+);
+<span class="k">SELECT</span> create_hypertable(<span class="s">'meter_readings'</span>, <span class="s">'ts'</span>);
+
+<span class="c">-- 小时均值 + 有效点数（用于判断该小时是否可信）</span>
+<span class="k">SELECT</span> time_bucket(<span class="s">'1 hour'</span>, ts) <span class="k">AS</span> bucket,
+       meter_id,
+       avg(p_kw)   <span class="k">AS</span> avg_kw,
+       count(*)    <span class="k">AS</span> n_valid
+<span class="k">FROM</span> meter_readings
+<span class="k">WHERE</span> ts &gt;= now() - interval <span class="s">'7 days'</span>
+<span class="k">GROUP BY</span> bucket, meter_id
+<span class="k">ORDER BY</span> bucket;
+
+<span class="c">-- 连续聚合：自动维护日粒度汇总</span>
+<span class="k">CREATE MATERIALIZED VIEW</span> meter_daily
+<span class="k">WITH</span> (timescaledb.continuous) <span class="k">AS</span>
+<span class="k">SELECT</span> time_bucket(<span class="s">'1 day'</span>, ts) <span class="k">AS</span> d, meter_id,
+       avg(p_kw) <span class="k">AS</span> mean_kw, max(p_kw) <span class="k">AS</span> max_kw, count(*) <span class="k">AS</span> n
+<span class="k">FROM</span> meter_readings <span class="k">GROUP BY</span> d, meter_id;
+</pre>
+        </div>
+
+        <div class="callout how">
+          <b class="t">降采样不是可选项</b>
+          <p>15 分钟数据一天 96 点，一年 3.5 万点/测点。1000 个测点就是 3500 万行。做年度分析时不可能每次扫全量，必须有小时/日粒度的连续聚合。项目二就是先在内存里聚合到“测点-日”，再做检测——23 万行变成 2400 个测点日，评估和解释都变得可行。</p>
+        </div>
+
+        <h2 id="pipeline">一条完整的清洗流水线</h2>
+        <p>把上面的规则串起来，就是项目二 <code>detect.py</code> 里的 <code>load_and_clean()</code>。它做了五件事，顺序很重要。</p>
+
+        <div class="steps">
+          <div class="step"><h4>读取台账与原始读数</h4><p>台账提供容量、类型；读数提供时间序列。两者按 <code>meter_id</code> 关联。</p></div>
+          <div class="step"><h4>去重与排序</h4><p>同一测点同一时刻只保留一条，按时间升序。乱序会让 <code>shift</code>、<code>rolling</code> 全错。</p></div>
+          <div class="step"><h4>非法值置空</h4><p>负值、超过容量 3 倍、零值（在应有负荷的时段）统统置 NaN。</p></div>
+          <div class="step"><h4>按测点补齐时间索引并插值</h4><p>每个测点独立 reindex 到 15 分钟，短缺口插值，长缺口保留为 NaN 供后续标注。</p></div>
+          <div class="step"><h4>统计并输出</h4><p>记录去重数、置空数、缺失率；输出清洗后的数据和质量报表。</p></div>
+        </div>
+
+        <p>项目二的实际清洗结果（<code>metrics.json</code> 中的 <code>clean</code> 段）：</p>
+
+        <div class="data-table table-wrap">
+          <table>
+            <thead><tr><th>字段</th><th class="num">数值</th><th>含义</th></tr></thead>
+            <tbody>
+              <tr><td>raw_rows</td><td class="num">230,600</td><td>原始行数</td></tr>
+              <tr><td>duplicates_removed</td><td class="num">200</td><td>重复记录</td></tr>
+              <tr><td>negative_values</td><td class="num">40</td><td>负功率</td></tr>
+              <tr><td>zero_values</td><td class="num">60</td><td>异常零值</td></tr>
+              <tr><td>clean_rows</td><td class="num">230,400</td><td>清洗后行数（40 测点 × 60 天 × 96 点）</td></tr>
+              <tr><td>raw_missing_rate</td><td class="num">0.0068</td><td>原始缺失率</td></tr>
+              <tr><td>missing_after_fill</td><td class="num">0.0003</td><td>补齐后残留缺失率</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>注意 <code>230,400 = 40 × 60 × 96</code> 这个数字。它能对上，说明索引补齐没有多也没有少——这本身就是一次很有价值的一致性校验。</p>
+
+        <div class="callout pit">
+          <b class="t">常见错误：对所有测点一起插值</b>
+          <p><code>df.interpolate()</code> 作用于整张表时，可能把 M001 的值插到 M002 的空位上。必须先 <code>groupby("meter_id")</code> 再处理。同理，滚动统计也要分组，否则会把不同测点的数据混在一起算。</p>
+        </div>
+
+        <div class="callout how">
+          <b class="t">延伸阅读</b>
+          <p>想把清洗写成可复用、可上线的流水线，继续读 <a href="11-timeseries.html">专题 B2 · 时序数据工程进阶</a>：时区、96 点日历、缺失机制、Parquet/DuckDB/Spark 与训练服务一致性。</p>
+        </div>
+
+        <h2 id="faq">常见问题</h2>
+
+        <details class="qa" open>
+          <summary>Q1：缺失率只有 0.7%，真的需要处理吗？</summary>
+          <div class="ans">需要。0.7% 是全表平均，但分布极不均匀：某些测点某些时段可能连续缺 6 小时。而这些“局部重灾”恰好会落在模型的滞后特征上。做数据治理要看<strong>最差的那 5%</strong>，不是平均值。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：为什么不能把异常值直接删掉？</summary>
+          <div class="ans">删掉会破坏时间轴的等间隔性，导致滞后特征错位。正确做法是置为 NaN，再按缺失策略处理。另一个原因是：异常本身可能是业务信号（窃电、故障），删了就丢了线索。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：清洗规则要不要写死在代码里？</summary>
+          <div class="ans">阈值（容量倍数、缺失上限）应该配置化，方便按测点类型调整；但处理逻辑（先去重、再置空、再插值）应固定。顺序错了，结果会完全不同。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：清洗后的数据要不要覆盖原始数据？</summary>
+          <div class="ans">绝对不要。原始数据是不可再生资产，必须原样保留；清洗结果单独存一份，并记录清洗版本。出问题时才能回溯“是数据变了，还是规则变了”。</div>
+        </details>
+        <details class="qa">
+          <summary>Q5：InfluxDB 和 TimescaleDB 到底选哪个？</summary>
+          <div class="ans">看团队栈。如果后端是 Java/Python + PostgreSQL，且需要和台账、工单 join，选 TimescaleDB 更省事；如果是纯监控、写入量极大、需要原生降采样，InfluxDB 更顺手。面试时说清取舍理由，比背参数重要。</div>
+        </details>
+
+        <h2 id="check">自测</h2>
+        <ul class="checklist">
+          <li>给出三种脏数据，并说明各自的检测方法和处理方式。</li>
+          <li>为什么 15 分钟功率聚合到小时用 mean，电量用 sum？</li>
+          <li>短缺口和长缺口的处理差异，理由是什么？</li>
+          <li>MAD 相比 3σ 的优势在哪？为什么滚动基线不能用未来数据？</li>
+          <li>写出质量报表里至少 4 个指标的计算口径。</li>
+          <li>TimescaleDB 里 <code>time_bucket</code> 和连续聚合分别解决什么问题？</li>
+        </ul>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="02-basics.html">← 上一章：时序与 ML 基础</a>
+          <a class="btn-ghost" style="text-decoration:none" href="04-model.html">下一章：特征工程与负荷预测 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 3 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

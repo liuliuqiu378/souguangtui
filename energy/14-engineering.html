@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>专题 B5 · 算法工程实践 | 能源数据与算法工程师</title>
+<meta name="description" content="可复现、可测试、可观测、可回滚：项目结构、配置与密钥、日志、pytest、数据测试、DVC/MLflow、GitHub Actions、Docker/K8s、性能优化、监控告警、成本与合规。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">专题 B5 · <b>算法工程实践</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">SPECIAL B5 · ALGORITHM ENGINEERING</div>
+          <h1>算法工程实践：让结果可复现、可测试、可回滚</h1>
+          <p class="lead">第 6 章讲了服务化的骨架。这一章补“工程素养”：代码怎么组织、测试怎么写、版本怎么管、CI 怎么跑、线上怎么观测、成本怎么估。这些不炫技，但决定了别人敢不敢把你的模型放进生产。</p>
+          <div class="page-meta">
+            <span>预计 90 分钟</span>
+            <span>前置：第 6 章</span>
+            <span>产出：一套可交付的工程规范</span>
+            <span>性质：实践 / 落地</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">四个词定义“工程化”</b>
+          <p><strong>可复现</strong>：同一份代码 + 同一份数据 + 同一个种子，任何人能跑出同样的结果。<strong>可测试</strong>：改一行代码，能在几分钟内知道有没有弄坏东西。<strong>可观测</strong>：线上出问题，能回答“哪里、什么时候、为什么”。<strong>可回滚</strong>：新版本不行，能在一分钟内退回上一版。缺任何一个，都还停在“Demo”。</p>
+        </div>
+
+        <h2 id="structure">项目结构：让陌生人也能找到东西</h2>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">推荐目录结构</span><button class="copy">复制</button></div>
+          <pre>project/
+├── README.md               <span class="c"># 怎么跑、数据从哪来、指标口径</span>
+├── pyproject.toml          <span class="c"># 依赖与版本锁定</span>
+├── configs/
+│   ├── base.yaml           <span class="c"># 特征名单、超参、路径</span>
+│   └── prod.yaml           <span class="c"># 环境差异，不写密钥</span>
+├── src/
+│   ├── data/               <span class="c"># 读取、清洗、校验</span>
+│   ├── features/           <span class="c"># 训练与服务共用</span>
+│   ├── models/             <span class="c"># 训练、预测、评估</span>
+│   └── service/            <span class="c"># API、调度、监控埋点</span>
+├── scripts/                <span class="c"># 一次性入口：train.py、backfill.py</span>
+├── tests/                  <span class="c"># 单元、集成、黄金样本</span>
+├── artifacts/              <span class="c"># 模型、指标、特征重要性</span>
+└── data/                   <span class="c"># 不提交仓库；用 DVC/对象存储</span>
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一条硬规则：特征代码只有一份</b>
+          <p>训练与服务必须 import 同一个 <code>features/build.py</code>，不能各写一份。项目一和项目二都遵守这点：训练脚本和 <code>api.py</code> 调用同一套特征函数。这是避免“离线 1.78%、线上 6%”最有效的手段。</p>
+        </div>
+
+        <h2 id="config">配置与密钥：不要把密码写进代码</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">内容</th><th style="width:34%">放哪</th><th>注意</th></tr></thead>
+            <tbody>
+              <tr><td><strong>特征名单、超参</strong></td><td>YAML / Python 常量</td><td>进版本库，可 review</td></tr>
+              <tr><td><strong>环境差异</strong></td><td>环境变量 / 配置中心</td><td>不要用 if-else 写死路径</td></tr>
+              <tr><td><strong>数据库密码、Token</strong></td><td>密钥管理 / 环境变量</td><td>绝不进 Git；日志里要脱敏</td></tr>
+              <tr><td><strong>模型文件</strong></td><td>对象存储 + 版本号</td><td>不进 Git；用 DVC/MLflow 管</td></tr>
+              <tr><td><strong>数据快照</strong></td><td>数据湖 / 对象存储</td><td>按日期分区，可回放</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">配置加载（示意）</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> os, yaml
+<span class="k">from</span> pathlib <span class="k">import</span> Path
+
+cfg = yaml.safe_load(Path(<span class="s">"configs/base.yaml"</span>).read_text())
+cfg.update(yaml.safe_load(Path(f<span class="s">"configs/{os.getenv('ENV', 'dev')}.yaml"</span>).read_text()))
+
+DB_URL = os.environ[<span class="s">"DB_URL"</span>]        <span class="c"># 只从环境变量取</span>
+<span class="k">assert</span> <span class="s">"password"</span> <span class="k">not</span> <span class="k">in</span> str(cfg).lower()
+</pre>
+        </div>
+
+        <h2 id="log">日志：为“事后破案”而写</h2>
+        <p>日志不是 print。好的日志要能回答：谁在什么时候、用什么输入、得到了什么输出、耗时多少、是否降级。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">结构化日志 + 请求上下文</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> logging, json, time, uuid
+
+log = logging.getLogger(<span class="s">"forecast"</span>)
+
+<span class="k">def</span> handle(req):
+    rid = str(uuid.uuid4())[:8]
+    t0 = time.perf_counter()
+    <span class="k">try</span>:
+        y = predict(req)
+        log.info(json.dumps({
+            <span class="s">"rid"</span>: rid, <span class="s">"event"</span>: <span class="s">"ok"</span>,
+            <span class="s">"origin"</span>: str(req.origin_ts), <span class="s">"n_points"</span>: len(y),
+            <span class="s">"latency_ms"</span>: round((time.perf_counter()-t0)*<span class="n">1000</span>, <span class="n">1</span>),
+        }, ensure_ascii=<span class="k">False</span>))
+        <span class="k">return</span> y
+    <span class="k">except</span> Exception <span class="k">as</span> e:
+        log.exception(json.dumps({<span class="s">"rid"</span>: rid, <span class="s">"event"</span>: <span class="s">"error"</span>, <span class="s">"msg"</span>: str(e)}))
+        <span class="k">raise</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：日志里打印完整负荷序列</b>
+          <p>一次请求带 169 个点，日志会被撑爆，还可能包含敏感数据。正确做法：记录摘要（点数、均值、缺失率、首末值）和 <code>rid</code>，需要时再用 rid 去对象存储取原始请求。</p>
+        </div>
+
+        <h2 id="test">测试：从“我试过”到“有证据”</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">层级</th><th style="width:34%">测什么</th><th>例子</th></tr></thead>
+            <tbody>
+              <tr><td><strong>单元测试</strong></td><td>函数级逻辑</td><td>特征函数输出列名、缺失处理、边界值</td></tr>
+              <tr><td><strong>数据测试</strong></td><td>数据质量与分布</td><td>无重复、缺失率阈值、容量范围、时间连续</td></tr>
+              <tr><td><strong>集成测试</strong></td><td>端到端链路</td><td>请求 → 特征 → 模型 → 响应格式</td></tr>
+              <tr><td><strong>黄金样本</strong></td><td>输出与基准一致</td><td>同一输入，预测结果与基准误差 &lt; 1e-6</td></tr>
+              <tr><td><strong>回归测试</strong></td><td>指标不退化</td><td>新模型在固定测试集上 MAPE 不高于上一版 + 0.1</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">tests/test_features.py</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> pandas <span class="k">as</span> pd, numpy <span class="k">as</span> np
+<span class="k">from</span> src.features.build <span class="k">import</span> make_features
+
+<span class="k">def</span> test_lag_uses_previous_day():
+    idx = pd.date_range(<span class="s">"2024-01-01"</span>, periods=<span class="n">200</span>, freq=<span class="s">"h"</span>)
+    s = pd.Series(np.arange(<span class="n">200</span>, dtype=<span class="k">float</span>), index=idx)
+    f = make_features(s)
+    <span class="k">assert</span> f.loc[idx[<span class="n">30</span>], <span class="s">"lag24"</span>] == s.loc[idx[<span class="n">6</span>]]
+
+<span class="k">def</span> test_no_future_leak():
+    <span class="c"># 构造一个“未来突变”的序列，验证特征不受影响</span>
+    idx = pd.date_range(<span class="s">"2024-01-01"</span>, periods=<span class="n">100</span>, freq=<span class="s">"h"</span>)
+    s = pd.Series(<span class="n">1.0</span>, index=idx)
+    f1 = make_features(s)
+    s2 = s.copy(); s2.iloc[<span class="n">80</span>:] = <span class="n">999</span>
+    f2 = make_features(s2)
+    <span class="k">assert</span> (f1.iloc[:<span class="n">80</span>].fillna(<span class="n">-1</span>) == f2.iloc[:<span class="n">80</span>].fillna(<span class="n">-1</span>)).all().all()
+</pre>
+        </div>
+
+        <p>第二个测试很关键：它把“不泄漏未来”从口头承诺变成了可执行断言。以后任何人改特征，只要破坏了这条规则，CI 会立刻拦住。</p>
+
+        <h2 id="version">版本管理：代码、数据、模型分开管</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">对象</th><th style="width:22%">工具</th><th>要点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>代码</strong></td><td>Git</td><td>小步提交、分支、PR review；commit 写“为什么”</td></tr>
+              <tr><td><strong>数据</strong></td><td>DVC / 数据湖</td><td>按日期分区，记录快照 ID</td></tr>
+              <tr><td><strong>模型</strong></td><td>MLflow / 对象存储</td><td>模型 + 特征列表 + 超参 + 指标 + 训练数据范围</td></tr>
+              <tr><td><strong>环境</strong></td><td>Docker 镜像</td><td>镜像 tag 与模型版本绑定</td></tr>
+              <tr><td><strong>实验</strong></td><td>MLflow / 表格</td><td>每个实验记录参数、指标、数据版本</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">模型版本里必须有什么</b>
+          <p>模型文件、特征顺序、预处理参数、阈值、训练数据时间范围、代码 commit、评估指标、负责人。少一样，出问题时就无法回答“这个版本是怎么来的”。第 6 章的 <code>artifacts/</code> 规范就是为此设计的。</p>
+        </div>
+
+        <h2 id="ci">CI/CD：把检查自动化</h2>
+        <p>每次提交自动跑：格式检查 → 单元测试 → 数据测试 → 训练冒烟 → 镜像构建。任何一步失败就阻止合并。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">.github/workflows/ci.yml（骨架）</span><button class="copy">复制</button></div>
+          <pre>name: ci
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install -r requirements.txt
+      - run: ruff check src tests
+      - run: pytest -q
+      - run: python scripts/smoke_train.py   <span class="c"># 小样本训练 + 断言指标</span>
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">CI 里不要跑全量训练</b>
+          <p>全量训练可能几十分钟，拖慢反馈。正确做法是“小样本冒烟”：取最近 7 天数据、50 棵树，只验证链路能跑通、指标不崩。全量训练放到独立的定时任务或发布流水线里。</p>
+        </div>
+
+        <h2 id="deploy">部署形态：批、在线、流</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">形态</th><th style="width:28%">场景</th><th style="width:26%">技术</th><th>重点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>批处理</strong></td><td>每天 0 点出 96 点预测</td><td>Airflow + 容器任务</td><td>幂等、可重跑、补数</td></tr>
+              <tr><td><strong>在线 API</strong></td><td>平台点开即查、实时调度</td><td>FastAPI + Docker</td><td>延迟、限流、降级</td></tr>
+              <tr><td><strong>流式</strong></td><td>秒级告警、实时特征</td><td>Kafka + Flink</td><td>水位线、乱序、状态管理</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">Dockerfile（最小可用）</span><button class="copy">复制</button></div>
+          <pre>FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src ./src
+COPY artifacts ./artifacts
+EXPOSE 8000
+CMD ["uvicorn", "src.service.api:app", "--host", "0.0.0.0", "--port", "8000"]
+</pre>
+        </div>
+
+        <div class="callout what">
+          <b class="t">K8s 只需要知道四件事</b>
+          <p><strong>Deployment</strong> 管副本与滚动更新；<strong>Service</strong> 提供稳定入口；<strong>HPA</strong> 按 CPU/自定义指标扩缩容；<strong>ConfigMap/Secret</strong> 管配置与密钥。算法工程师不一定要会运维集群，但要知道自己的服务是怎么被调度、怎么被限制资源的。</p>
+        </div>
+
+        <h2 id="perf">性能：先量，再优化</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">手段</th><th style="width:34%">做法</th><th>适用</th></tr></thead>
+            <tbody>
+              <tr><td><strong>向量化</strong></td><td>用 pandas/numpy 代替 for 循环</td><td>特征计算</td></tr>
+              <tr><td><strong>批量推理</strong></td><td>一次 predict 多个测点</td><td>树模型吞吐远高于逐条调用</td></tr>
+              <tr><td><strong>缓存</strong></td><td>缓存历史负荷、节假日表、特征</td><td>重复请求、批量任务</td></tr>
+              <tr><td><strong>并发</strong></td><td>线程/进程池、异步 IO</td><td>IO 密集（查库、调外部）</td></tr>
+              <tr><td><strong>降级</strong></td><td>超时返回上次结果或简单基线</td><td>在线服务保可用</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>项目一的单次 24 点预测在普通笔记本上是毫秒级，真正的瓶颈通常在“取历史数据”和“网络”。所以先测端到端延迟，再看模型推理耗时，不要盲目优化模型。</p>
+
+        <h2 id="monitor">监控：四层指标，缺一不可</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">层次</th><th style="width:34%">看什么</th><th>告警示例</th></tr></thead>
+            <tbody>
+              <tr><td><strong>可用性</strong></td><td>请求成功率、错误码、健康检查</td><td>5 分钟错误率 &gt; 1%</td></tr>
+              <tr><td><strong>性能</strong></td><td>P50/P95/P99 延迟、吞吐</td><td>P95 &gt; 500 ms 持续 5 分钟</td></tr>
+              <tr><td><strong>数据质量</strong></td><td>缺失率、越界率、延迟到达</td><td>某测点缺失率 &gt; 5%</td></tr>
+              <tr><td><strong>模型效果</strong></td><td>精度、漂移、告警量、命中率</td><td>MAPE 周环比上升 &gt; 0.5 个点</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">告警要分级，否则没人看</b>
+          <p><strong>P0</strong>：服务不可用、结果明显错误 → 立即电话；<strong>P1</strong>：精度显著下降、数据大面积缺失 → 工作时间内处理；<strong>P2</strong>：单测点异常、轻微漂移 → 日报汇总。所有 P0/P1 都要有 runbook（先查什么、怎么回滚），否则半夜被叫起来只会慌。</p>
+        </div>
+
+        <h2 id="cost">成本与容量：别让方案跑不起</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">成本项</th><th style="width:34%">怎么估</th><th>优化方向</th></tr></thead>
+            <tbody>
+              <tr><td><strong>算力</strong></td><td>训练时长 × 单价；推理 QPS × 单次耗时</td><td>小模型、批处理、按需扩容</td></tr>
+              <tr><td><strong>存储</strong></td><td>原始数据 + 特征 + 模型 × 保留周期</td><td>分区、压缩、冷热分层</td></tr>
+              <tr><td><strong>数据库</strong></td><td>写入量、查询量、保留天数</td><td>降采样归档、只存必要标签</td></tr>
+              <tr><td><strong>人力</strong></td><td>维护、值班、迭代</td><td>自动化监控与重训练</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>一个常见误区：为了“技术先进”上实时流处理，结果数据量根本不需要秒级，成本翻倍、故障点变多。先问“业务能等多长时间”，再决定架构。</p>
+
+        <h2 id="security">安全与合规：能源数据不是普通数据</h2>
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>数据安全</h4>
+            <p>用户用电数据可推断作息、生产情况，属于敏感信息。要做脱敏、最小权限、访问审计；导出数据要审批。</p>
+          </div>
+          <div class="card tight">
+            <h4>模型可解释</h4>
+            <p>告警要能解释“为什么报这个测点”，否则现场不认。特征重要性、同业对比、原始曲线是最低要求。</p>
+          </div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">合规边界</b>
+          <p>窃电认定、费用追缴是执法/商务行为，算法只能提供线索，不能替代现场核查与法律程序。写报告时要区分“模型判定”和“事实认定”，这既是专业，也是保护自己。</p>
+        </div>
+
+        <h2 id="collab">协作与交付：让结果被采用</h2>
+        <div class="steps">
+          <div class="step"><h4>需求评审：先定验收标准</h4><p>“预测准”不是标准。“日前 24 点，MAPE ≤ 2.5%，峰段 ≤ 2%，接口 P95 &lt; 200 ms”才是。验收标准要在动手前写下来。</p></div>
+          <div class="step"><h4>中期对齐：给可看的中间结果</h4><p>不要憋大招。第二周就给出数据质量报告和基线，让业务尽早纠偏。</p></div>
+          <div class="step"><h4>上线评审：风险清单</h4><p>数据依赖、降级方案、回滚步骤、责任人、监控项，逐条确认。</p></div>
+          <div class="step"><h4>复盘：把事故变成资产</h4><p>每次 P0/P1 都写清时间线、根因、影响、改进项。三个月后，这些就是面试里最好的故事。</p></div>
+        </div>
+
+        <h2 id="pit">常见坑</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:34%">坑</th><th>后果</th><th>正确做法</th></tr></thead>
+            <tbody>
+              <tr><td>密钥写进代码/Notebook</td><td>泄露、审计不过</td><td>环境变量 / 密钥管理</td></tr>
+              <tr><td>只测“能跑”，不测边界</td><td>线上空输入直接崩</td><td>单元测试覆盖空值、越界、缺列</td></tr>
+              <tr><td>模型文件不带特征列表</td><td>列顺序错，结果离谱</td><td>模型包存 features + 冒烟测试</td></tr>
+              <tr><td>日志打印全量数据</td><td>存储爆炸、隐私风险</td><td>摘要 + rid</td></tr>
+              <tr><td>没有回滚方案</td><td>事故恢复以小时计</td><td>镜像 tag + 一键回滚</td></tr>
+              <tr><td>CI 跑全量训练</td><td>反馈慢，没人等</td><td>小样本冒烟</td></tr>
+              <tr><td>监控只看服务，不看效果</td><td>模型悄悄失效三个月</td><td>加精度/漂移/告警量指标</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="qa">常见问题</h2>
+        <details class="qa">
+          <summary>Q1：小团队也要搞这么全吗？</summary>
+          <div class="ans">不必全上，但四件事不能省：配置与密钥分离、特征代码一份、模型包带特征列表、能回滚。其余按团队规模逐步补。工程化的目的是降低协作成本，不是堆工具。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：没有 K8s，怎么部署？</summary>
+          <div class="ans">Docker + 一台服务器 + systemd/supervisor 就能跑；批任务用 cron。等并发、可用性要求上来再考虑 K8s。不要为了简历上写 K8s 而增加故障面。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：模型效果监控没有真实标签怎么办？</summary>
+          <div class="ans">用代理指标：输入分布漂移、预测分布变化、与同业/历史基线偏离、人工反馈。真实标签到达后再补算精度。关键是“有信号”，而不是“等完美指标”。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：CI 里怎么测数据质量？</summary>
+          <div class="ans">用断言或轻量框架：行数范围、主键唯一、时间连续、缺失率上限、数值范围、枚举值合法。数据测试失败应阻断训练，而不是只发告警——脏数据训出来的模型比没有模型更危险。</div>
+        </details>
+
+        <h2 id="check">自测：你的项目能交付吗</h2>
+        <ul class="checklist">
+          <li>新同事能在 10 分钟内按 README 跑出和你一样的指标。</li>
+          <li>改坏特征代码，CI 能在 5 分钟内报错。</li>
+          <li>模型包里能查到特征顺序、训练数据范围、代码 commit。</li>
+          <li>线上出错时，能用一个 rid 找到那次请求的输入摘要与输出。</li>
+          <li>新版本出问题，能在 1 分钟内回滚到上一版。</li>
+          <li>能说清你的方案在 10 倍数据量下大概需要多少算力与存储。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">回到主线</b>
+          <p>到这里，你已经覆盖了“行业 → 数据 → 模型 → 优化 → 工程”的完整链路。建议回到 <a href="07-project-load.html">项目一</a> 和 <a href="08-project-ems.html">项目二</a>，用这些标准重新检查一遍自己的代码，再读 <a href="09-career.html">第 9 章</a> 把经历讲成故事。</p>
+        </div>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 专题 B5 · 数据与指标均可复现
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

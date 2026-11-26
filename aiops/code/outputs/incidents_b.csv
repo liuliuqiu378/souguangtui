@@ -1,0 +1,21 @@
+﻿id,start,end,root,root_cn,type,type_desc,action,affected,duration_min
+INC-B01,2026-11-05 10:00:00,2026-11-05 13:04:00,mysql-cluster,MySQL 集群,db_slow,数据库慢查询 / 连接池打满,kill 慢查询并扩容连接池,"['dzzz', 'gjj', 'k8s-node-01', 'k8s-node-02', 'k8s-node-03', 'rx12345', 'sjhj', 'yb', 'ywtb']",184
+INC-B02,2026-11-05 22:00:00,2026-11-06 01:08:00,k8s-node-03,K8s 节点 03,cpu_saturation,CPU 饱和（计算任务抢占）,摘除热点实例并水平扩容,"['dzzz', 'sjhj']",188
+INC-B03,2026-11-06 10:00:00,2026-11-06 12:35:00,redis-cluster,Redis 集群,mem_leak,内存泄漏，阶梯上涨,滚动重启 Pod 并保留堆转储,"['dxmt', 'gjj', 'k8s-node-01', 'k8s-node-02', 'k8s-node-04', 'menhu', 'rx12345', 'yb', 'ywtb']",155
+INC-B04,2026-11-06 22:00:00,2026-11-07 00:08:00,api-gateway-gov,政务 API 网关,network_jitter,网络抖动 / 丢包重传,切换备用链路并修正 MTU,"['dxmt', 'dzzz', 'gjj', 'rx12345', 'sjhj', 'yb', 'ywtb']",128
+INC-B05,2026-11-07 10:00:00,2026-11-07 12:41:00,nginx-ingress,Nginx 入口,cert_expiry,证书过期 / TLS 握手失败,更新证书并重载 Ingress,"['api-gateway-gov', 'dxmt', 'dzzz', 'gjj', 'menhu', 'rx12345', 'sjhj', 'yb', 'ywtb']",161
+INC-B06,2026-11-07 22:00:00,2026-11-07 23:35:00,k8s-node-02,K8s 节点 02,disk_full,磁盘写满，日志无法落盘,清理日志并扩容磁盘,"['rx12345', 'yb']",95
+INC-B07,2026-11-08 10:00:00,2026-11-08 13:17:00,kafka-cluster,Kafka 集群,cpu_saturation,CPU 饱和（计算任务抢占）,摘除热点实例并水平扩容,"['dzzz', 'k8s-node-03', 'sjhj']",197
+INC-B08,2026-11-08 22:00:00,2026-11-08 23:35:00,es-cluster,ES 日志集群,disk_full,磁盘写满，日志无法落盘,清理日志并扩容磁盘,[],95
+INC-B09,2026-11-09 10:00:00,2026-11-09 11:37:00,oss-storage,对象存储,network_jitter,网络抖动 / 丢包重传,切换备用链路并修正 MTU,[],97
+INC-B10,2026-11-09 22:00:00,2026-11-09 23:58:00,k8s-node-01,K8s 节点 01,mem_leak,内存泄漏，阶梯上涨,滚动重启 Pod 并保留堆转储,"['gjj', 'ywtb']",118
+INC-B11,2026-11-10 10:00:00,2026-11-10 12:29:00,mysql-cluster,MySQL 集群,change_fault,变更发布引入异常,回滚最近一次发布,"['dzzz', 'gjj', 'k8s-node-01', 'k8s-node-02', 'k8s-node-03', 'rx12345', 'sjhj', 'yb', 'ywtb']",149
+INC-B12,2026-11-10 22:00:00,2026-11-11 00:52:00,api-gateway-gov,政务 API 网关,change_fault,变更发布引入异常,回滚最近一次发布,"['dxmt', 'dzzz', 'gjj', 'rx12345', 'sjhj', 'yb', 'ywtb']",172
+INC-B13,2026-11-11 10:00:00,2026-11-11 12:32:00,yb,医保结算,change_fault,变更发布引入异常,回滚最近一次发布,[],152
+INC-B14,2026-11-11 22:00:00,2026-11-11 23:38:00,redis-cluster,Redis 集群,network_jitter,网络抖动 / 丢包重传,切换备用链路并修正 MTU,"['dxmt', 'gjj', 'k8s-node-01', 'k8s-node-02', 'k8s-node-04', 'menhu', 'rx12345', 'yb', 'ywtb']",98
+INC-B15,2026-11-12 10:00:00,2026-11-12 12:04:00,k8s-node-04,K8s 节点 04,cpu_saturation,CPU 饱和（计算任务抢占）,摘除热点实例并水平扩容,"['dxmt', 'menhu']",124
+INC-B16,2026-11-12 22:00:00,2026-11-12 23:59:00,sjhj,数据共享交换,change_fault,变更发布引入异常,回滚最近一次发布,[],119
+INC-B17,2026-11-13 10:00:00,2026-11-13 12:44:00,kafka-cluster,Kafka 集群,disk_full,磁盘写满，日志无法落盘,清理日志并扩容磁盘,"['dzzz', 'k8s-node-03', 'sjhj']",164
+INC-B18,2026-11-13 22:00:00,2026-11-14 01:12:00,nginx-ingress,Nginx 入口,network_jitter,网络抖动 / 丢包重传,切换备用链路并修正 MTU,"['api-gateway-gov', 'dxmt', 'dzzz', 'gjj', 'menhu', 'rx12345', 'sjhj', 'yb', 'ywtb']",192
+INC-B19,2026-11-14 10:00:00,2026-11-14 13:22:00,k8s-node-05,K8s 节点 05,mem_leak,内存泄漏，阶梯上涨,滚动重启 Pod 并保留堆转储,[],202
+INC-B20,2026-11-14 22:00:00,2026-11-14 23:35:00,dxmt,短信网关,cert_expiry,证书过期 / TLS 握手失败,更新证书并重载 Ingress,[],95

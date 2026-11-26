@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>零基础补课 · Python 与机器学习词汇 | 能源数据与算法工程师</title>
+<meta name="description" content="不需要任何前置：Python 最小语法、pandas 与 Excel 对照、机器学习 12 个核心词、环境安装、读代码与查报错的方法。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">开始 · <b>零基础补课</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">START HERE · ZERO PREREQUISITE</div>
+          <h1>零基础补课：先能读懂代码和术语</h1>
+          <p class="lead">这一页不要求任何基础。它只做一件事：把后面 14 页反复出现的 <strong>Python、pandas、机器学习词汇</strong> 用最短的路径讲明白，让你读第 1 章时不会每一段都卡住。</p>
+          <div class="page-meta">
+            <span>预计 60 分钟</span>
+            <span>前置：无</span>
+            <span>产出：能跑通第一段代码</span>
+            <span>性质：补课 / 可选</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先说清楚：什么时候可以跳过</b>
+          <p>如果你能看懂 <code>df.groupby("meter_id")["p_kw"].mean()</code>，并且能解释“特征、标签、过拟合”这三个词，这一页可以直接跳过，从 <a href="01-role.html">第 1 章</a> 开始。否则建议花一小时读完，后面会省下十几个小时。</p>
+        </div>
+
+        <h2 id="selfcheck">60 秒自检：你需要这一页吗</h2>
+        <ul class="checklist">
+          <li>我知道 Python 里“缩进”为什么不能乱写。</li>
+          <li>我能看懂 <code>df[df["p_kw"] &gt; 100]</code> 在做什么。</li>
+          <li>我能说出“特征”和“标签”的区别。</li>
+          <li>我知道模型“训练”到底在干什么。</li>
+          <li>看到一段报错，我知道先看最后一行。</li>
+        </ul>
+        <p>如果上面有 <strong>3 条以上不确定</strong>，建议按顺序读完；只有 1~2 条不确定，可以只读对应小节。</p>
+
+        <h2 id="python">Python 最小语法：够读本项目就行</h2>
+        <p>你不需要先学完一门编程课。下面这些覆盖了教程里 90% 的代码。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">概念</th><th style="width:34%">长什么样</th><th>一句话理解</th></tr></thead>
+            <tbody>
+              <tr><td><strong>变量</strong></td><td><code>x = 3</code>、<code>name = "M001"</code></td><td>给一个值起名字，后面用名字代替它</td></tr>
+              <tr><td><strong>列表 / 字典</strong></td><td><code>[1, 2, 3]</code>、<code>{"a": 1}</code></td><td>列表是一队值；字典是“键 → 值”的查找表</td></tr>
+              <tr><td><strong>函数</strong></td><td><code>def f(x): return x * 2</code></td><td>把一段操作包起来，给个名字，可重复调用</td></tr>
+              <tr><td><strong>条件</strong></td><td><code>if x &gt; 0: ... else: ...</code></td><td>满足条件才执行某段</td></tr>
+              <tr><td><strong>循环</strong></td><td><code>for i in range(3): ...</code></td><td>对一组东西逐个做同一件事</td></tr>
+              <tr><td><strong>导入</strong></td><td><code>import pandas as pd</code></td><td>借用别人写好的工具箱，<code>pd</code> 是它的简称</td></tr>
+              <tr><td><strong>缩进</strong></td><td>4 个空格</td><td>Python 用缩进表示“属于上一行”，缩进错了逻辑就变了</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">最小示例：不装任何东西也能看懂</span><button class="copy">复制</button></div>
+          <pre>meters = [<span class="s">"M001"</span>, <span class="s">"M002"</span>, <span class="s">"M003"</span>]
+loads  = [<span class="n">120.5</span>, <span class="n">98.2</span>, <span class="n">210.0</span>]
+
+<span class="k">for</span> m, p <span class="k">in</span> <span class="n">zip</span>(meters, loads):     <span class="c"># 把两个列表配对，逐个取</span>
+    <span class="k">if</span> p &gt; <span class="n">150</span>:
+        <span class="k">print</span>(m, <span class="s">"高负荷"</span>, p)
+    <span class="k">else</span>:
+        <span class="k">print</span>(m, <span class="s">"正常"</span>, p)
+</pre>
+        </div>
+
+        <div class="callout how">
+          <b class="t">报错怎么读：只看最后一行</b>
+          <p>Python 报错一长串，真正有用的通常是<strong>最后一行</strong>：<code>KeyError: 'p_kw'</code> 表示列名不存在，<code>ValueError: could not convert string to float</code> 表示某列混进了文字，<code>FileNotFoundError</code> 表示路径不对。先照最后一行改，不要从头读。</p>
+        </div>
+
+        <h2 id="pandas">pandas：把 Excel 的活写成代码</h2>
+        <p>pandas 是 Python 里处理表格的库。你已经会的 Excel 操作，几乎都能一一对应。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Excel 里怎么做</th><th style="width:34%">pandas 怎么写</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>打开 CSV</td><td><code>pd.read_csv("x.csv")</code></td><td>得到一张表（DataFrame）</td></tr>
+              <tr><td>看前几行</td><td><code>df.head()</code></td><td>先确认列名和数据长相</td></tr>
+              <tr><td>筛选某列 &gt; 100</td><td><code>df[df["p_kw"] &gt; 100]</code></td><td>中括号里放条件</td></tr>
+              <tr><td>VLOOKUP</td><td><code>df.merge(meta, on="meter_id")</code></td><td>按共同列拼表</td></tr>
+              <tr><td>数据透视表</td><td><code>df.pivot_table(index="meter_id", values="p_kw", aggfunc="mean")</code></td><td>分组后汇总</td></tr>
+              <tr><td>按类别求平均</td><td><code>df.groupby("meter_type")["p_kw"].mean()</code></td><td>“按什么分组、算什么”</td></tr>
+              <tr><td>排序</td><td><code>df.sort_values(["meter_id", "ts"])</code></td><td>时序数据几乎都要先排序</td></tr>
+              <tr><td>画折线图</td><td><code>df.plot(x="ts", y="p_kw")</code></td><td>需要 matplotlib</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">一段完整的小例子（可直接运行）</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> pandas <span class="k">as</span> pd
+
+df = pd.DataFrame({
+    <span class="s">"meter_id"</span>: [<span class="s">"M001"</span>, <span class="s">"M001"</span>, <span class="s">"M002"</span>, <span class="s">"M002"</span>],
+    <span class="s">"ts"</span>: [<span class="s">"2024-08-01 00:00"</span>, <span class="s">"2024-08-01 00:15"</span>,
+           <span class="s">"2024-08-01 00:00"</span>, <span class="s">"2024-08-01 00:15"</span>],
+    <span class="s">"p_kw"</span>: [<span class="n">120.5</span>, <span class="n">118.0</span>, <span class="n">210.0</span>, <span class="n">215.5</span>],
+})
+df[<span class="s">"ts"</span>] = pd.to_datetime(df[<span class="s">"ts"</span>])
+
+df[<span class="s">"energy_kwh"</span>] = df[<span class="s">"p_kw"</span>] * <span class="n">0.25</span>        <span class="c"># 15 分钟 → 电量</span>
+per_meter = df.groupby(<span class="s">"meter_id"</span>)[<span class="s">"energy_kwh"</span>].sum()
+<span class="k">print</span>(per_meter)
+<span class="c"># M001    59.625</span>
+<span class="c"># M002   106.375</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">新手最常见的三个错</b>
+          <p>① 列名拼错（多一个空格也算错）；② 忘了 <code>parse_dates</code> 或 <code>to_datetime</code>，时间列变成字符串，排序和画图都会乱；③ 直接 <code>df["p_kw"] + 1</code> 改原表，结果后面全被污染。遇到“结果不对”，先 <code>print(df.head())</code> 看数据本身。</p>
+        </div>
+
+        <h2 id="ml">机器学习 12 个词，用一句话说清</h2>
+        <p>后面每一章都会用这些词。先用生活化的说法建立印象，正式定义会在第 2 章补上。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">词</th><th style="width:40%">大白话</th><th>在本项目里的例子</th></tr></thead>
+            <tbody>
+              <tr><td><strong>样本</strong></td><td>一条记录 / 一个例子</td><td>某天 0 点对 1 点的负荷预测任务</td></tr>
+              <tr><td><strong>特征</strong></td><td>用来判断的线索（输入）</td><td>昨天同时刻负荷、温度、星期几</td></tr>
+              <tr><td><strong>标签</strong></td><td>要预测的答案（输出）</td><td>明天 1 点的实际负荷</td></tr>
+              <tr><td><strong>模型</strong></td><td>从线索到答案的公式</td><td>LightGBM 的那 183 棵树</td></tr>
+              <tr><td><strong>训练</strong></td><td>用历史例子把公式调出来</td><td>拿 2023~2024 年数据拟合</td></tr>
+              <tr><td><strong>预测</strong></td><td>用调好的公式算新答案</td><td>输入明天天气，输出 24 个点</td></tr>
+              <tr><td><strong>损失</strong></td><td>预测和答案差多少</td><td>MAE、MSE；越小越好</td></tr>
+              <tr><td><strong>过拟合</strong></td><td>把历史背下来了，换新题就错</td><td>训练集很好、测试集很差</td></tr>
+              <tr><td><strong>欠拟合</strong></td><td>太笨，连历史规律都没学会</td><td>训练集和测试集都差</td></tr>
+              <tr><td><strong>正则化</strong></td><td>故意“收着点”，防止背题</td><td>Ridge 的 L2、树的深度限制</td></tr>
+              <tr><td><strong>超参数</strong></td><td>训练前人为设定的旋钮</td><td>树的数量、学习率、叶子数</td></tr>
+              <tr><td><strong>基线</strong></td><td>不用机器学习能做到的水平</td><td>“昨日同期”MAPE 5.30%</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">5 行看懂“训练”和“预测”</span><button class="copy">复制</button></div>
+          <pre><span class="k">from</span> sklearn.linear_model <span class="k">import</span> LinearRegression
+
+X = [[<span class="n">1</span>], [<span class="n">2</span>], [<span class="n">3</span>], [<span class="n">4</span>]]    <span class="c"># 特征（比如温度）</span>
+y = [<span class="n">2</span>, <span class="n">4</span>, <span class="n">6</span>, <span class="n">8</span>]              <span class="c"># 标签（比如负荷）</span>
+
+m = LinearRegression().fit(X, y)     <span class="c"># 训练：找一条最贴合这些点的线</span>
+<span class="k">print</span>(m.predict([[<span class="n">5</span>]]))              <span class="c"># 预测：温度 5 时，负荷约 10</span>
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">最重要的一个观念</b>
+          <p>机器学习不是“让电脑自己变聪明”，而是<strong>用历史数据拟合一个从输入到输出的映射</strong>。所以数据质量、特征选择、评估方式，比模型名字重要得多。这也是为什么本教程用两章讲数据、一章讲特征。</p>
+        </div>
+
+        <h2 id="readcode">读不懂代码时，按这个顺序看</h2>
+        <div class="steps">
+          <div class="step"><h4>先看输入和输出，不看中间</h4><p>这段函数接收什么、返回什么？知道这两端，中间只是加工过程。</p></div>
+          <div class="step"><h4>遇到不认识的函数，先查它做什么，不要背参数</h4><p>比如 <code>shift(24)</code>：查一次就知道是“整体下移 24 行”，比记住所有参数有用。</p></div>
+          <div class="step"><h4>打印中间结果</h4><p>在关键行后面 <code>print(df.head())</code> 或 <code>print(df.shape)</code>，看数据在每一步长什么样。</p></div>
+          <div class="step"><h4>删到最小可运行</h4><p>把代码删到只剩 5 行还能跑，再加回一行，看哪一行改变了结果。这是定位问题最快的办法。</p></div>
+        </div>
+
+        <h2 id="env">环境：一次装好，后面不折腾</h2>
+        <p>Windows 下打开 PowerShell，按顺序执行。第一条只做一次。</p>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">安装与创建虚拟环境</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 1) 确认 Python 版本（需要 3.10 及以上）</span>
+python --version
+
+<span class="c"># 2) 在项目目录建虚拟环境（只做一次）</span>
+python -m venv .venv
+
+<span class="c"># 3) 激活（每次打开新终端都要做）</span>
+.\.venv\Scripts\Activate.ps1
+
+<span class="c"># 4) 装依赖</span>
+pip install pandas numpy scikit-learn lightgbm matplotlib jupyter
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">三个环境坑</b>
+          <p>① 安装 Python 时没勾“Add Python to PATH”，命令行找不到 <code>python</code>；② PowerShell 禁止运行脚本，激活时报“无法加载文件”，需要改执行策略；③ 在错误的目录下激活，装到了全局环境。装完先 <code>python -c "import pandas as pd; print(pd.__version__)"</code> 验证。</p>
+        </div>
+
+        <h2 id="units">符号与单位：先认脸，不然后面全是天书</h2>
+        <p>后面会反复出现这些符号。不需要背，混个眼熟即可，遇到时回来查。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">符号 / 缩写</th><th style="width:34%">含义</th><th>在哪出现</th></tr></thead>
+            <tbody>
+              <tr><td><strong>kW / MW</strong></td><td>功率单位，1 MW = 1000 kW</td><td>负荷、储能功率、需量</td></tr>
+              <tr><td><strong>kWh</strong></td><td>电量单位，1 kWh = 1 度电</td><td>电费、发电量、充放电量</td></tr>
+              <tr><td><strong>kVA</strong></td><td>视在功率，含无功</td><td>变压器容量、功率因数</td></tr>
+              <tr><td><strong>η（eta）</strong></td><td>效率，0~1 之间</td><td>储能往返效率、光伏转换效率</td></tr>
+              <tr><td><strong>Δt</strong></td><td>一个时间段的长度</td><td>15 分钟 = 0.25 小时</td></tr>
+              <tr><td><strong>SOC</strong></td><td>电池剩余电量百分比</td><td>储能调度，10%~90%</td></tr>
+              <tr><td><strong>MAPE / MAE / RMSE</strong></td><td>三种预测误差指标</td><td>第 2、4 章与两个项目</td></tr>
+              <tr><td><strong>P10 / P50 / P90</strong></td><td>10%、50%、90% 分位数</td><td>概率预测、区间估计（B3）</td></tr>
+              <tr><td><strong>F1</strong></td><td>精确率与召回率的综合分</td><td>异常识别（第 5 章、项目二）</td></tr>
+              <tr><td><strong>STLF</strong></td><td>短期负荷预测</td><td>项目一的英文缩写</td></tr>
+              <tr><td><strong>EMS / DR / VPP</strong></td><td>能源管理系统 / 需求响应 / 虚拟电厂</td><td>第 1 章、B1、B4</td></tr>
+              <tr><td><strong>CT / PT</strong></td><td>电流互感器 / 电压互感器</td><td>计量倍率（B1）</td></tr>
+              <tr><td><strong>API / JSON</strong></td><td>接口 / 一种文本数据格式</td><td>服务化（第 6 章）</td></tr>
+              <tr><td><strong>MLOps / CI/CD</strong></td><td>模型运维 / 持续集成与交付</td><td>第 6 章、B5</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="qa">常见问题</h2>
+        <details class="qa">
+          <summary>Q1：数学要学到什么程度？</summary>
+          <div class="ans">会加减乘除、百分比、平均数即可开始。时序部分会用到“平均、方差、分位数”，第 2 章会补；优化部分会用到线性方程，B4 会从零讲。不需要先学完微积分和线性代数。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：完全没写过代码，要多久？</summary>
+          <div class="ans">按每天 1 小时，两周能读懂本教程的代码；能独立改写需要 1~2 个月。关键不是看完语法，而是把第 2 章那段 30 行示例亲手跑通、改几个参数看结果变化。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：需要 GPU 吗？</summary>
+          <div class="ans">不需要。两个项目的模型在普通笔记本 CPU 上几分钟内跑完。只有做深度学习实验时才考虑 GPU，而本教程的结论并不依赖它。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：报错搜不到怎么办？</summary>
+          <div class="ans">把报错最后一行 + 你的代码片段一起搜；先确认数据形状（<code>df.shape</code>）和列名（<code>df.columns</code>）。80% 的报错是列名、类型、路径、空值四类问题。</div>
+        </details>
+
+        <h2 id="next">接下来读什么</h2>
+        <div class="grid-3">
+          <div class="card tight">
+            <h4>想先看全貌</h4>
+            <p><a href="01-role.html">第 1 章 · 岗位拆解</a>：这个岗位每天做什么、需要哪些能力。</p>
+          </div>
+          <div class="card tight">
+            <h4>想先懂业务</h4>
+            <p><a href="10-power.html">专题 B1 · 电力与能源行业基础</a>：电怎么计量、电费怎么算。</p>
+          </div>
+          <div class="card tight">
+            <h4>想先动手</h4>
+            <p><a href="02-basics.html">第 2 章 · 时序与机器学习基础</a>：有一段 30 行、能直接跑通的全流程。</p>
+          </div>
+        </div>
+
+        <ul class="checklist">
+          <li>我能解释变量、函数、循环、缩进分别在做什么。</li>
+          <li>我能用 pandas 读表、筛选、分组求和。</li>
+          <li>我能说出特征、标签、训练、过拟合的区别。</li>
+          <li>我已经跑通至少一段代码，并改过一个参数。</li>
+          <li>我知道报错时先看最后一行。</li>
+        </ul>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 零基础补课 · 可选但建议
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

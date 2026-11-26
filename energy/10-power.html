@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>专题 B1 · 电力与能源行业基础 | 能源数据与算法工程师</title>
+<meta name="description" content="电力系统构成、功率/电量/需量/容量、电表与采集规约、EMS 系统家族、两部制与峰谷电价、电力市场与需求响应、碳核算、八类行业场景与术语速查。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">专题 B1 · <b>电力与能源行业基础</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">SPECIAL B1 · POWER INDUSTRY</div>
+          <h1>电力与能源行业基础：先懂物理，再谈算法</h1>
+          <p class="lead">这一章不讲模型，只补你最缺、也最容易被面试官一眼看穿的东西：<strong>电是怎么计量、怎么定价、怎么结算的</strong>。学完你应该能看懂一张电费单、说清一个测点的数据从哪来，并且不再把 kW 和 kWh 混着用。</p>
+          <div class="page-meta">
+            <span>预计 90 分钟</span>
+            <span>前置：第 1 章（建议同步读）</span>
+            <span>产出：能解释电费构成与数据口径</span>
+            <span>性质：背景 / 行业知识</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先说清楚：这一章解决什么</b>
+          <p>算法工程师的绝大多数“看起来像模型问题”的错误，最后都能追到三件事：<strong>单位错了、口径错了、物理约束漏了</strong>。比如把 15 分钟功率直接求和当电量、把月度最大需量当成日最大值、把光伏出力当成负荷。这些错误不会报错，只会让结论安静地偏掉。补这一章，是为了让你在写第一行特征代码之前，就知道每个数字代表什么。</p>
+        </div>
+
+        <h2 id="why">为什么算法工程师要补电力常识</h2>
+        <div class="grid-3">
+          <div class="card tight">
+            <h4>① 单位错：差 4 倍或 1000 倍</h4>
+            <p>功率是 kW（瞬时），电量是 kWh（累计）。15 分钟一个点，<code>功率 × 0.25 h = 电量</code>。把 96 个功率点直接相加，得到的不是日电量，而是一个没有物理意义的数。</p>
+          </div>
+          <div class="card tight">
+            <h4>② 口径错：同一句话两种意思</h4>
+            <p>“最大负荷 2000”是 kW 还是 kVA？“这个月用了 80 万度”是总电量还是峰段电量？口径不写清楚，模型评估和收益核算都会对不上账。</p>
+          </div>
+          <div class="card tight">
+            <h4>③ 约束漏：算出来的方案执行不了</h4>
+            <p>储能不能同时充放电、SOC 不能越界、并网不能超容、电池不能无限循环。优化模型里少一条约束，结果就会“很漂亮但没法用”。</p>
+          </div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一条判断标准</b>
+          <p>如果你不能用一句话说清“这个字段的单位、采样频率、统计口径、谁在用”，那这个字段就还不能进模型。先把这句话写进数据字典，再写代码。</p>
+        </div>
+
+        <h2 id="system">电力系统：电从哪来，到哪去</h2>
+        <p>电力系统可以粗暴地分成五段：<strong>发电 → 输电 → 变电 → 配电 → 用电</strong>。你所在的园区 EMS，几乎全部发生在最后两段；但你的数据质量，取决于前面每一段。</p>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 300" width="100%" role="img" aria-label="电力系统五段结构图">
+            <defs>
+              <marker id="arr1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 z" fill="#9db4c8"/>
+              </marker>
+            </defs>
+            <g font-size="13" text-anchor="middle">
+              <rect x="18" y="52" width="120" height="72" rx="10" fill="#eef6ff" stroke="#c7dbf5"/>
+              <text x="78" y="80" fill="#1e40af" font-weight="700">发电</text>
+              <text x="78" y="101" font-size="11" fill="#4b6b9a">火/水/风/光</text>
+
+              <rect x="164" y="52" width="120" height="72" rx="10" fill="#f5f3ff" stroke="#ddd6fe"/>
+              <text x="224" y="80" fill="#5b21b6" font-weight="700">输电</text>
+              <text x="224" y="101" font-size="11" fill="#6d5bb5">220kV 及以上</text>
+
+              <rect x="310" y="52" width="120" height="72" rx="10" fill="#f5f3ff" stroke="#ddd6fe"/>
+              <text x="370" y="80" fill="#5b21b6" font-weight="700">变电</text>
+              <text x="370" y="101" font-size="11" fill="#6d5bb5">降压 / 分配</text>
+
+              <rect x="456" y="52" width="120" height="72" rx="10" fill="#e6fffa" stroke="#a7e8df"/>
+              <text x="516" y="80" fill="#0f5f57" font-weight="700">配电</text>
+              <text x="516" y="101" font-size="11" fill="#2c7a72">10kV / 380V</text>
+
+              <rect x="602" y="52" width="100" height="72" rx="10" fill="#fff7e6" stroke="#f6d99b"/>
+              <text x="652" y="80" fill="#92400e" font-weight="700">用电</text>
+              <text x="652" y="101" font-size="11" fill="#a16207">园区 / 楼宇</text>
+            </g>
+            <g stroke="#9db4c8" stroke-width="1.8" marker-end="url(#arr1)">
+              <line x1="138" y1="88" x2="160" y2="88"/>
+              <line x1="284" y1="88" x2="306" y2="88"/>
+              <line x1="430" y1="88" x2="452" y2="88"/>
+              <line x1="576" y1="88" x2="598" y2="88"/>
+            </g>
+
+            <rect x="18" y="158" width="684" height="58" rx="10" fill="#f8fafc" stroke="#e3e9f0"/>
+            <text x="360" y="182" font-size="12.5" fill="#33546e" text-anchor="middle">电网调度：实时平衡发电与用电，频率维持 50Hz；偏差过大 → 调频 / 切负荷</text>
+            <text x="360" y="202" font-size="11.5" fill="#64748b" text-anchor="middle">所以“负荷预测”不只是省钱：预测偏大 → 多买电；预测偏小 → 偏差考核或临时高价购电</text>
+
+            <rect x="18" y="238" width="684" height="46" rx="10" fill="#e6fffa" stroke="#a7e8df"/>
+            <text x="360" y="266" font-size="12.5" fill="#0f5f57" text-anchor="middle">你的工作区间：配电侧计量 → 园区 EMS → 负荷预测 / 异常识别 / 储能调度</text>
+          </svg>
+          <figcaption><b>电力系统五段。</b>越往右越接近用户，数据越细、越脏；越往左电压越高、数据越聚合。</figcaption>
+          <div class="fig-how"><b>面试用法：</b>被问“你的数据从哪来”，能沿着这张图说清“关口表 → 采集网关 → 时序库 → EMS → 我的算法”，就能明显区别于只会跑 Notebook 的候选人。</div>
+        </figure>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">环节</th><th style="width:24%">典型电压等级</th><th>你可能会接触到的数据</th></tr></thead>
+            <tbody>
+              <tr><td><strong>输电</strong></td><td>220 / 330 / 500 / 750 kV，直流 ±800 kV</td><td>一般拿不到；最多是电网下发的关口计量与结算电量</td></tr>
+              <tr><td><strong>变电</strong></td><td>110 / 35 / 10 kV</td><td>关口表、主变容量、需量、功率因数、负荷曲线</td></tr>
+              <tr><td><strong>配电</strong></td><td>10 kV / 380 V</td><td>台区总表、分支表、居民/商户表；线损分析的统计单元</td></tr>
+              <tr><td><strong>用电</strong></td><td>380 / 220 V</td><td>楼栋、车间、产线、充电桩、光伏逆变器、储能 PCS 的秒级/分钟级数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">为什么“实时平衡”决定了预测的价值</b>
+          <p>电能不能大规模、低成本地储存（储能成本仍高），所以发电必须几乎实时等于用电。这个物理事实带来两个直接后果：① 负荷预测是电力系统的基础输入，不是“可选的增值功能”；② 预测误差会转化成真金白银——多买要退、少买要补，偏差还可能被考核。这就是这个岗位存在的根本原因。</p>
+        </div>
+
+        <h2 id="quantities">四个必须分清的量：功率、电量、需量、容量</h2>
+        <p>这四个词在日常对话里经常被混用，但在数据和结算里是完全不同的东西。下面这张表建议直接背下来。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:11%">量</th><th style="width:10%">单位</th><th style="width:30%">定义</th><th>在项目里的样子</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>功率</strong></td><td>kW</td>
+                <td>某一瞬间的用电速率。电表每 15 分钟记录的是这段时间的平均功率。</td>
+                <td>项目一的 <code>load_mw</code>、项目二的 <code>p_kw</code></td>
+              </tr>
+              <tr>
+                <td><strong>电量</strong></td><td>kWh</td>
+                <td>一段时间内累计的电能，等于功率对时间的积分。</td>
+                <td>电费单上的“用电量”、储能充放电量、光伏发电量</td>
+              </tr>
+              <tr>
+                <td><strong>需量</strong></td><td>kW</td>
+                <td>一个计费周期内，按固定窗口（常见 15 分钟）统计的平均功率最大值。</td>
+                <td>基本电费的计算依据；储能削峰的直接目标</td>
+              </tr>
+              <tr>
+                <td><strong>容量</strong></td><td>kVA / kW</td>
+                <td>设备或合同允许的最大功率能力，是“上限”而不是“实际值”。</td>
+                <td>变压器容量、并网容量、储能功率上限、测点容量字段</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>功率 → 电量：乘时间</h4>
+            <p><code>电量(kWh) = 功率(kW) × 时长(h)</code>。15 分钟 = 0.25 小时，所以 96 个点求和后要乘 0.25（如果单位是 kW）。项目二的原始表只存了功率 <code>p_kw</code>，电量要在分析时按 0.25 小时折算，不能直接相加当 kWh。</p>
+          </div>
+          <div class="card tight">
+            <h4>电量 → 平均功率：除时间</h4>
+            <p>一天用了 19,200 kWh，平均功率就是 <code>19200 / 24 = 800 kW</code>。这个数不等于最大需量——负荷有峰谷，平均值会显著低于峰值。</p>
+          </div>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：电表读数是累计值，不是瞬时功率</b>
+          <p>很多电表存的是“正向有功总电量”这类累计读数（kWh），每次抄表得到的是递增的数字。你必须做<strong>差分</strong>（后一条减前一条）才能得到区间电量，再除以时间得到平均功率。直接拿累计值当负荷建模，会得到一条单调上升的斜线。</p>
+        </div>
+
+        <h3>有功、无功、功率因数</h3>
+        <p>交流电里，真正做功的是有功功率（kW），建立磁场的那部分是无功功率（kvar），两者合成视在功率（kVA）。三者关系：</p>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">三个功率的关系</span><button class="copy">复制</button></div>
+          <pre>视在功率 S (kVA) = √(P² + Q²)
+功率因数 cosφ   = P / S
+
+<span class="c"># 例：P = 800 kW，Q = 600 kvar</span>
+<span class="c"># S = √(800² + 600²) = 1000 kVA，cosφ = 0.8</span>
+<span class="c"># 功率因数低于考核标准（常见 0.9）会产生力调电费罚款</span>
+</pre>
+        </div>
+        <p>这就是为什么很多园区要装无功补偿装置：不是为了省电量，而是为了把 <code>cosφ</code> 提到 0.9 以上，避免力调电费罚款。做负荷预测时通常只关心有功；但做容量规划和电费核算时，必须看视在功率。</p>
+
+        <h2 id="metering">计量与采集：一行数据是怎么来的</h2>
+        <p>一条“2024-08-01 00:15, M013, 412.6 kW”的记录，背后经过了很多环节。任何一环出问题，你看到的就是缺失、重复、跳变或倍率错误。</p>
+
+        <div class="steps">
+          <div class="step"><h4>一次侧：电压互感器（PT）与电流互感器（CT）</h4><p>高电压、大电流不能直接进表，要先按比例降到表能接受的范围。这个比例就是“变比”，也就是常说的<strong>倍率</strong>。</p></div>
+          <div class="step"><h4>二次侧：电能表计量</h4><p>电表按 15 分钟（或 1 分钟）统计平均功率、累计电量、最大需量、事件记录（失压、失流、开盖等）。精度等级常见 0.2S / 0.5S / 1 级 / 2 级。</p></div>
+          <div class="step"><h4>采集：网关 / 集中器</h4><p>通过 RS-485、载波（HPLC）、4G 等把表里的数据抄上来。网关通常有本地缓存和断点续传，断网恢复后会补传。</p></div>
+          <div class="step"><h4>上传：规约转换</h4><p>把电表规约（如 DL/T 645）转成平台能接收的格式，经 MQTT / HTTP / IEC 104 上传。</p></div>
+          <div class="step"><h4>落库：时序数据库</h4><p>按测点打标签写入。这里会出现重复、乱序、时区错、单位不统一等第二波问题。</p></div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">倍率（综合倍率）怎么算</span><button class="copy">复制</button></div>
+          <pre>综合倍率 = CT 变比 × PT 变比
+
+<span class="c"># 例：CT 300/5 = 60，PT 10000/100 = 100</span>
+<span class="c"># 综合倍率 = 60 × 100 = 6000</span>
+<span class="c"># 表码差 100（kWh）→ 实际电量 100 × 6000 = 600,000 kWh</span>
+
+<span class="c"># 项目二里 meter_meta.csv 存了 ct_ratio 字段；</span>
+<span class="c"># 倍率配错会让整条曲线系统性放大/缩小，是最典型的“整表异常”</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：倍率错误看起来像“用电暴涨”，不像数据错误</b>
+          <p>倍率从 1 改成 3，曲线整体抬升 3 倍，形状完全正常。基于形状的异常检测（比如同比、同业基线）很容易把它判成“用电异常”而不是“计量异常”。所以项目二里单独设了“倍率类”规则：与同类型测点的水平比值持续偏离，且形状相关性仍然很高。</p>
+        </div>
+
+        <h3>常见通信规约：不用会写，但要知道谁在说话</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:17%">规约</th><th style="width:22%">用在哪</th><th>你需要知道的一句话</th></tr></thead>
+            <tbody>
+              <tr><td><strong>DL/T 645</strong></td><td>多功能电能表</td><td>国内电表最常用的抄表规约，按“数据标识”读电量、需量、事件</td></tr>
+              <tr><td><strong>DL/T 698.45</strong></td><td>面向对象的用电信息采集</td><td>比 645 更现代，支持更多对象与参数</td></tr>
+              <tr><td><strong>IEC 60870-5-104</strong></td><td>调度/变电站远动</td><td>常说的“104 规约”，传遥测、遥信、遥控</td></tr>
+              <tr><td><strong>IEC 61850</strong></td><td>变电站自动化</td><td>面向对象的变电站通信标准，模型化程度高</td></tr>
+              <tr><td><strong>Modbus RTU/TCP</strong></td><td>PLC、逆变器、PCS、BMS</td><td>工业设备最常见的“寄存器读写”，点位表就是它的字典</td></tr>
+              <tr><td><strong>MQTT</strong></td><td>网关到云平台</td><td>轻量发布订阅，适合大量设备上行</td></tr>
+              <tr><td><strong>HPLC</strong></td><td>台区电表本地通信</td><td>高速电力线载波，不用额外布线，但受台区噪声影响</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">采集质量三个指标</b>
+          <p><strong>采集成功率</strong>：应采点数中成功采到的比例；<strong>完整率</strong>：一天 96 点里实际有多少点；<strong>及时率</strong>：数据在规定时间前到齐的比例。这三个指标通常写在运维考核里，也直接决定你的特征能不能按时算出来。项目二的质量分只用了完整率与容量合理性，是简化版。</p>
+        </div>
+
+        <h3>台区与线损：行业里最常用的两个分析单元</h3>
+        <p><strong>台区</strong>是一台配电变压器供电的范围。台区总表（供电量）减去所有用户表之和（售电量），差值就是线损。线损率突然升高，常见原因有三个：窃电、计量故障、户变关系错（用户的表被挂到了别的台区）。</p>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">线损率的计算与判断</span><button class="copy">复制</button></div>
+          <pre>线损率 = (供电量 - 售电量) / 供电量 × 100%
+
+<span class="c"># 例：台区总表 12,000 kWh，用户表合计 11,100 kWh</span>
+<span class="c"># 线损率 = (12000 - 11100) / 12000 = 7.5%</span>
+<span class="c"># 若历史稳定在 4%~5%，突然升到 7.5%，优先排查窃电/计量/户变关系</span>
+</pre>
+        </div>
+        <p>注意：线损率有合理的物理下限（变压器损耗、线路损耗），不是越低越好；不同台区、不同负载率之间也不能直接横向比较。项目二没有做台区级线损，因为仿真的是 40 个独立测点，这是一个明确的简化。</p>
+
+        <h2 id="ems-family">EMS 家族：SCADA、EMS、DMS、BMS、PCS 分别管什么</h2>
+        <p>招聘里写“EMS”，但真实项目里你会同时听到一堆系统名。它们的边界如下，至少要知道谁给你数据、你给谁结果。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:13%">系统</th><th style="width:30%">管什么</th><th style="width:26%">典型数据</th><th>和你的关系</th></tr></thead>
+            <tbody>
+              <tr><td><strong>SCADA</strong></td><td>实时监视与控制，秒级采集遥测遥信</td><td>电压、电流、开关状态、告警</td><td>设备级实时数据源；你的模型通常不用秒级，但要能对接</td></tr>
+              <tr><td><strong>EMS</strong></td><td>能源管理：计量、分析、报表、优化</td><td>15 分钟负荷、电费、需量、能流</td><td>你的算法最主要的宿主系统</td></tr>
+              <tr><td><strong>DMS</strong></td><td>配电管理：台区、线损、停电、抢修</td><td>台区总表、用户表、停电事件</td><td>窃电/线损分析的上游</td></tr>
+              <tr><td><strong>BMS</strong></td><td>电池管理：SOC、SOH、单体电压、温度</td><td>电池状态与保护信号</td><td>储能调度的硬约束来源</td></tr>
+              <tr><td><strong>PCS</strong></td><td>储能变流器：充放电功率控制</td><td>实际充放电功率、可用功率</td><td>你的调度指令最终下发给它</td></tr>
+              <tr><td><strong>微电网</strong></td><td>园区内源网荷储的自治运行</td><td>光伏、储能、负荷、并网点</td><td>调度问题的物理边界</td></tr>
+              <tr><td><strong>虚拟电厂（VPP）</strong></td><td>聚合可调资源，参与电网需求响应/辅助服务</td><td>可调容量、申报量、响应量</td><td>把“园区内的优化”变成“市场收益”</td></tr>
+              <tr><td><strong>碳管理平台</strong></td><td>碳排放核算、绿电绿证、碳资产</td><td>电量、排放因子、绿电比例</td><td>把电量换算成碳，口径必须统一</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">怎么快速搞清楚一个陌生项目的系统边界</b>
+          <p>问四个问题：① 数据从哪个系统来、多久一次？② 结果写回哪个系统、谁看？③ 谁能下发控制指令、有没有闭锁？④ 出问题谁负责？这四个答案决定了你的接口、延迟要求和验收标准，比读十页架构文档都有效。</p>
+        </div>
+
+        <h2 id="tariff">电价：一张电费单是怎么算出来的</h2>
+        <p>储能套利、需量控制、需求响应，全都建立在电价结构上。看不懂电费单，就不可能算对收益。</p>
+
+        <h3>电费通常由五块组成</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">组成</th><th style="width:34%">怎么算</th><th>你的算法能不能影响</th></tr></thead>
+            <tbody>
+              <tr><td><strong>电度电费</strong></td><td>分时段电量 × 对应电价（峰/平/谷/尖峰）</td><td>能：储能把电量从峰段搬到谷段</td></tr>
+              <tr><td><strong>基本电费</strong></td><td>按变压器容量（元/kVA·月）或按最大需量（元/kW·月）</td><td>能：削峰降低最大需量</td></tr>
+              <tr><td><strong>力调电费</strong></td><td>按功率因数高于/低于考核标准进行奖励或罚款</td><td>间接：无功补偿，通常不是算法职责</td></tr>
+              <tr><td><strong>政府性基金及附加</strong></td><td>按电量固定加收</td><td>不能</td></tr>
+              <tr><td><strong>偏差/考核费用</strong></td><td>参与市场交易时，实际与申报偏差产生的费用</td><td>能：更准的预测降低偏差</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout what">
+          <b class="t">两部制电价：为什么“少用电”不一定“少交钱”</b>
+          <p>大工业用户常见两部制：电度电费按用电量收，基本电费按容量或需量收。这意味着即使你这个月一度电没用，只要变压器容量还在，基本电费照收。反过来，如果你把峰值压下去、把负荷填到谷段，<strong>电量可能没少，但电费明显下降</strong>——这正是储能和需求响应的商业逻辑。</p>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">一张简化的月度电费单（示意数值）</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 示意：某园区一个月</span>
+peak_kwh, flat_kwh, valley_kwh = <span class="n">180_000</span>, <span class="n">420_000</span>, <span class="n">260_000</span>
+price = {<span class="s">"peak"</span>: <span class="n">1.15</span>, <span class="s">"flat"</span>: <span class="n">0.72</span>, <span class="s">"valley"</span>: <span class="n">0.38</span>}   <span class="c"># 元/kWh，示意</span>
+
+energy_fee = (peak_kwh * price[<span class="s">"peak"</span>]
+              + flat_kwh * price[<span class="s">"flat"</span>]
+              + valley_kwh * price[<span class="s">"valley"</span>])
+
+max_demand = <span class="n">2150</span>          <span class="c"># kW，月最大需量</span>
+demand_price = <span class="n">38</span>        <span class="c"># 元/kW·月，示意</span>
+demand_fee = max_demand * demand_price
+
+total = energy_fee + demand_fee
+<span class="c"># energy_fee = 207000 + 302400 + 98800 = 608,200 元</span>
+<span class="c"># demand_fee = 81,700 元；合计 689,900 元</span>
+<span class="c"># 其中基本电费占约 11.8%——削峰 200kW 就能省 7,600 元/月</span>
+</pre>
+        </div>
+
+        <p>这张账单解释了两件事：① 峰段电量占比越高，套利空间越大；② 基本电费是固定成本，削峰的收益是“确定”的，而套利收益受价差和效率影响。<strong>先做削峰、再做套利</strong>，通常是更稳的顺序。</p>
+
+        <div class="callout pit">
+          <b class="t">坑：拿“峰谷价差”直接乘放电量算收益</b>
+          <p>正确算式必须扣掉往返效率：放出 1 kWh，需要先充 <code>1/η</code> kWh（η 约为 0.9~0.95），所以净收益是 <code>峰价 − 谷价/η</code>，而不是 <code>峰价 − 谷价</code>。项目二按 0.95 的单程效率算出约 0.73 元/kWh 的净收益（放电口径），已扣损耗。</p>
+        </div>
+
+        <h2 id="market">电力市场与需求响应：钱从哪来</h2>
+        <p>电价不是唯一的收益来源。理解市场结构，你才知道“预测准”和“调度对”分别值多少钱。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">市场/机制</th><th style="width:30%">时间尺度</th><th>和算法岗位的关系</th></tr></thead>
+            <tbody>
+              <tr><td><strong>中长期交易</strong></td><td>年度、月度、多日</td><td>电量分解、合约曲线，决定大框架</td></tr>
+              <tr><td><strong>日前市场</strong></td><td>提前一天申报 96 点</td><td>负荷预测直接决定申报曲线，偏差会被结算</td></tr>
+              <tr><td><strong>实时市场</strong></td><td>15 分钟~1 小时</td><td>超短期预测、储能实时修正</td></tr>
+              <tr><td><strong>辅助服务</strong></td><td>调频、备用、爬坡</td><td>储能可参与，收益与性能考核挂钩</td></tr>
+              <tr><td><strong>需求响应</strong></td><td>提前邀约或实时</td><td>预测基线、评估可调量、避免“响应了却拿不到钱”</td></tr>
+              <tr><td><strong>绿电/绿证</strong></td><td>年度、月度</td><td>绿电电量与证书，影响碳核算口径</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>需求响应：最容易“算对了却亏钱”的场景</h3>
+        <p>需求响应（DR）是电网在高峰时段请你少用电，并按“少用的量”给你补偿。听起来简单，但结算依赖<strong>基线</strong>——也就是“如果你不响应，本来会用多少电”。基线算错，响应量就是负的。</p>
+
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>常见基线方法</h4>
+            <p><strong>10 中取 3</strong>：取响应日前 10 个工作日中负荷最高的 3 天，同时段平均。<strong>高 5 中 10</strong>：取前 5 个工作日与前 10 个工作日中较高者。还有回归基线（用温度、日期拟合）。</p>
+          </div>
+          <div class="card tight">
+            <h4>为什么会被考核</h4>
+            <p>如果响应日恰好降温、本来负荷就低，你“看起来”少用了很多，但那是天气的功劳，不是响应。反过来，如果基线估低了，你实际响应了也可能被判没响应。所以基线要保守、可解释、可审计。</p>
+          </div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一个现实判断</b>
+          <p>需求响应的收益通常小于“直接做储能套利 + 削峰”，但它的价值在于<strong>不投设备就能拿到补偿</strong>，且能提升园区的电网互动能力。项目二只做了储能套利与削峰，没有做 DR 结算，这是刻意收窄范围；面试时如果被问到，要能说清“为什么没做”和“要做需要补什么”。</p>
+        </div>
+
+        <h2 id="carbon">双碳与碳核算：别把碳算错</h2>
+        <p>“储能省了电费，但碳排反而增加了”——项目二的结果就是这样，很多人第一反应是算错了。其实不是。</p>
+
+        <div class="callout what">
+          <b class="t">为什么储能可能让碳排上升</b>
+          <p>储能有往返损耗（≈5%~10%），充进去的电比放出来的多。如果园区购电的排放因子是固定的，那么多买的这部分电就会带来额外排放。项目二 60 天购电增加约 29,724 kWh，按 0.5703 tCO2/MWh 计算，约增加 <strong>16.95 吨</strong>。这说明：<strong>省钱和减碳不是同一个目标</strong>，需要用分时排放因子或绿电来调和。</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">概念</th><th style="width:34%">含义</th><th>算法侧怎么用</th></tr></thead>
+            <tbody>
+              <tr><td><strong>排放因子</strong></td><td>每消耗 1 MWh 电对应的 CO₂ 排放量（tCO₂/MWh）</td><td>电量 × 因子 = 排放量；因子随电网结构逐年更新</td></tr>
+              <tr><td><strong>范围一</strong></td><td>直接排放：自备锅炉、燃气、车辆</td><td>通常不在算法范围，但要能区分</td></tr>
+              <tr><td><strong>范围二</strong></td><td>外购电、热带来的间接排放</td><td>你的主战场：电量 × 电网因子</td></tr>
+              <tr><td><strong>范围三</strong></td><td>供应链上下游排放</td><td>一般不做，面试知道概念即可</td></tr>
+              <tr><td><strong>绿电/绿证</strong></td><td>可再生能源电量及其凭证</td><td>可抵扣范围二，但口径必须与财务/碳管理对齐</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：用固定因子做“减碳”结论</b>
+          <p>固定因子假设“每度电的碳都一样”，但真实电网不同时段的边际排放因子差别很大（午间光伏多时更低）。用固定因子会得出“储能不减排”的结论；用分时边际因子，结论可能反过来。写报告时必须写清用的是哪种口径，不能混用。</p>
+        </div>
+
+        <h2 id="scenarios">八类典型场景：负荷长什么样，算法切在哪</h2>
+        <p>同样是“用电”，不同行业的曲线形态、痛点、可用特征完全不同。面试时能说出场景差异，比背模型名更有说服力。</p>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 300" width="100%" role="img" aria-label="五类典型日负荷形态示意">
+            <g stroke="#e3e9f0" stroke-width="1">
+              <line x1="56" y1="30" x2="56" y2="230"/><line x1="56" y1="230" x2="690" y2="230"/>
+              <line x1="56" y1="180" x2="690" y2="180" stroke-dasharray="4 5"/>
+              <line x1="56" y1="130" x2="690" y2="130" stroke-dasharray="4 5"/>
+              <line x1="56" y1="80" x2="690" y2="80" stroke-dasharray="4 5"/>
+            </g>
+            <g font-size="10.5" fill="#94a3b8">
+              <text x="20" y="234">0</text><text x="20" y="184">低</text><text x="20" y="134">中</text><text x="20" y="84">高</text>
+              <text x="56" y="250">00</text><text x="200" y="250">06</text><text x="340" y="250">12</text><text x="480" y="250">18</text><text x="650" y="250">24</text>
+            </g>
+
+            <path d="M56,200 C90,196 110,186 140,182 C180,176 200,120 240,112 C280,104 300,150 340,152 C380,154 400,96 440,88 C480,80 500,140 540,150 C580,160 620,186 690,192"
+                  fill="none" stroke="#0f766e" stroke-width="2.6"/>
+            <path d="M56,214 C120,210 160,206 220,200 C290,192 340,178 400,182 C470,186 520,200 570,206 C620,212 660,214 690,216"
+                  fill="none" stroke="#1d4ed8" stroke-width="2.6"/>
+            <path d="M56,120 C120,118 180,116 240,114 C300,112 360,110 420,112 C480,114 540,116 600,116 C640,116 670,118 690,118"
+                  fill="none" stroke="#b45309" stroke-width="2.6"/>
+            <path d="M56,206 C90,204 120,198 160,192 C200,186 240,120 280,110 C320,100 360,110 400,120 C440,130 480,186 520,196 C560,204 620,208 690,210"
+                  fill="none" stroke="#6d28d9" stroke-width="2.6"/>
+            <path d="M56,228 C120,228 180,226 240,224 C300,222 360,220 420,222 C480,224 540,226 600,226 C650,226 675,227 690,228"
+                  fill="none" stroke="#64748b" stroke-width="2.2" stroke-dasharray="6 4"/>
+
+            <g font-size="11" fill="#33546e">
+              <text x="520" y="72" fill="#0f766e">工业双峰</text>
+              <text x="520" y="188" fill="#1d4ed8">商业单峰</text>
+              <text x="520" y="106" fill="#b45309">数据中心（平坦）</text>
+              <text x="520" y="150" fill="#6d28d9">光伏净负荷（鸭形）</text>
+              <text x="520" y="244" fill="#64748b">路灯（夜间）</text>
+            </g>
+          </svg>
+          <figcaption><b>五类典型形态。</b>形态决定了特征设计：双峰需要小时与班次特征，平坦曲线更依赖趋势与温度，鸭形曲线必须把光伏单独建模。</figcaption>
+          <div class="fig-how"><b>面试要点：</b>不要笼统说“我做负荷预测”。要说“我做的是工业园区双峰负荷，早峰 9~11 点、晚峰 18~20 点，周末下移约 15%，所以日历特征和班次特征比温度更关键”。</div>
+        </figure>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">场景</th><th style="width:27%">负荷特征</th><th style="width:27%">核心痛点</th><th>算法切入点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>工业园区</strong></td><td>双峰、班次明显、周末下移、部分连续生产</td><td>产线启停导致突变；表计与产线不对应</td><td>负荷预测 + 需量控制 + 异常用能</td></tr>
+              <tr><td><strong>商业综合体</strong></td><td>单峰（10~21 点）、空调占比高、节假日更高</td><td>天气敏感、租户混杂、营业时间不一</td><td>温度响应建模、分租户异常、需量削峰</td></tr>
+              <tr><td><strong>数据中心</strong></td><td>接近平坦、PUE 稳定、7×24</td><td>容量紧、对中断零容忍</td><td>容量预测、PUE 异常、制冷优化</td></tr>
+              <tr><td><strong>轨道交通</strong></td><td>早晚高峰尖峰、牵引负荷脉冲</td><td>峰值高、再生制动能量</td><td>峰值预测、储能/再生能量利用</td></tr>
+              <tr><td><strong>钢铁/水泥</strong></td><td>连续生产、冲击负荷、电炉尖峰</td><td>需量极高、峰谷套利空间大</td><td>需量预测、避峰生产排程、储能</td></tr>
+              <tr><td><strong>光伏电站</strong></td><td>日出而作、午间峰值、云遮突变</td><td>出力不确定、爬坡率考核</td><td>发电预测、爬坡预警、储能平滑</td></tr>
+              <tr><td><strong>充电站</strong></td><td>晚高峰、随机到达、单桩功率大</td><td>容量不足、排队、需量冲击</td><td>充电需求预测、有序充电、V2G</td></tr>
+              <tr><td><strong>公共机构/医院</strong></td><td>日间为主、夜间基荷、季节性空调</td><td>预算约束、节能考核</td><td>能耗基线、异常识别、节能评估</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="data">行业数据长什么样：字段、频率与常见问题</h2>
+        <p>下面是电力/能源项目里最常见的几类表。看字段就能大致判断这个项目能做什么、难点在哪。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">数据表</th><th style="width:30%">关键字段</th><th style="width:16%">频率</th><th>典型问题</th></tr></thead>
+            <tbody>
+              <tr><td><strong>测点档案</strong></td><td>meter_id、名称、类型、容量、倍率、安装日期</td><td>变更时</td><td>容量不准、倍率错、户变关系错</td></tr>
+              <tr><td><strong>负荷读数</strong></td><td>meter_id、ts、有功功率、正向/反向电量</td><td>1~15 分钟</td><td>缺失、重复、倒走、负值、卡死</td></tr>
+              <tr><td><strong>需量记录</strong></td><td>meter_id、月份、最大需量、发生时间</td><td>月度</td><td>需量窗口口径不一致</td></tr>
+              <tr><td><strong>事件记录</strong></td><td>失压、失流、开盖、掉电、编程</td><td>事件触发</td><td>事件与负荷不对应，需交叉验证</td></tr>
+              <tr><td><strong>电价/账单</strong></td><td>时段、单价、电量、基本电费、力调</td><td>月度</td><td>政策调整、口径变化</td></tr>
+              <tr><td><strong>气象</strong></td><td>温度、湿度、辐照、风速</td><td>15 分钟~1 小时</td><td>站点距离远、预报与实测混用</td></tr>
+              <tr><td><strong>生产/班次</strong></td><td>班次、产量、检修计划</td><td>日/班</td><td>手工录入、口径不统一</td></tr>
+              <tr><td><strong>光伏/储能</strong></td><td>发电功率、SOC、充放电功率</td><td>1~15 分钟</td><td>通信中断、限功率、SOC 跳变</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="data-table">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ts</th><th>meter_id</th><th class="num">有功功率 kW</th><th class="num">正向电量 kWh</th><th>类型</th></tr></thead>
+              <tbody>
+                <tr><td>2024-08-01 00:00</td><td>M013</td><td class="num">412.6</td><td class="num">103.2</td><td>factory</td></tr>
+                <tr><td>2024-08-01 00:15</td><td>M013</td><td class="num">408.1</td><td class="num">102.0</td><td>factory</td></tr>
+                <tr><td>2024-08-01 00:30</td><td>M013</td><td class="num">—</td><td class="num">—</td><td>factory</td></tr>
+                <tr><td>2024-08-01 00:45</td><td>M013</td><td class="num">415.9</td><td class="num">104.0</td><td>factory</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p>注意 00:30 这一行：不是 0，而是空。真实数据里“缺失”和“零”必须分开处理——零可能是真的停机，空是没采到。把两者混为一谈，是异常检测误报的主要来源之一。</p>
+
+        <h2 id="terms">术语速查：电力侧 40 个词</h2>
+        <p>第 1 章给了 20 个跨业务术语，这里补电力行业内部的词。要求仍然是：能用一句大白话解释，并说出它在项目里对应哪个字段或哪条规则。</p>
+
+        <h3>系统与设备</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">术语</th><th>一句话解释</th></tr></thead>
+            <tbody>
+              <tr><td><strong>关口表</strong></td><td>电网与用户产权分界处的计量表，结算就认它。</td></tr>
+              <tr><td><strong>考核表</strong></td><td>用于内部考核/分项计量的表，不直接参与结算。</td></tr>
+              <tr><td><strong>台区</strong></td><td>一台配电变压器供电的范围，线损与窃电分析的基本单元。</td></tr>
+              <tr><td><strong>CT / PT</strong></td><td>电流/电压互感器，把大电流高电压按比例缩小后给表计。</td></tr>
+              <tr><td><strong>综合倍率</strong></td><td>CT 变比 × PT 变比，表码差乘它才是实际电量。</td></tr>
+              <tr><td><strong>PCS</strong></td><td>储能变流器，负责电池的充放电功率控制。</td></tr>
+              <tr><td><strong>BMS</strong></td><td>电池管理系统，管 SOC、SOH、温度与保护。</td></tr>
+              <tr><td><strong>逆变器</strong></td><td>把光伏直流电转成交流电的设备。</td></tr>
+              <tr><td><strong>并网点</strong></td><td>园区/微电网与外部电网连接的位置，功率在此计量。</td></tr>
+              <tr><td><strong>微电网</strong></td><td>可并网也可孤网运行的小型发配用电系统。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>计量与运行</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">术语</th><th>一句话解释</th></tr></thead>
+            <tbody>
+              <tr><td><strong>有功 / 无功</strong></td><td>真正做功的功率 / 建立电磁场但不做功的功率。</td></tr>
+              <tr><td><strong>功率因数</strong></td><td>有功与视在功率之比，低会被罚款。</td></tr>
+              <tr><td><strong>需量周期</strong></td><td>统计最大需量用的时间窗口，常见 15 分钟。</td></tr>
+              <tr><td><strong>最大需量</strong></td><td>计费周期内各窗口平均功率的最大值。</td></tr>
+              <tr><td><strong>负荷率</strong></td><td>平均负荷 / 最大负荷，衡量用电平稳程度。</td></tr>
+              <tr><td><strong>线损率</strong></td><td>供电量与售电量之差占供电量的比例。</td></tr>
+              <tr><td><strong>户变关系</strong></td><td>哪个用户表挂在哪个台区变压器下。</td></tr>
+              <tr><td><strong>倒走</strong></td><td>电表读数比上次小，可能是接线错误或光伏反送。</td></tr>
+              <tr><td><strong>失压 / 失流</strong></td><td>电压或电流回路异常，会导致少计电量。</td></tr>
+              <tr><td><strong>开盖事件</strong></td><td>表盖被打开，是窃电排查的重要线索。</td></tr>
+              <tr><td><strong>冻结数据</strong></td><td>整点/日末固定时刻保存的一份读数快照。</td></tr>
+              <tr><td><strong>采集成功率</strong></td><td>应采数据中成功采集到的比例。</td></tr>
+              <tr><td><strong>负荷曲线</strong></td><td>功率随时间变化的序列，15 分钟粒度最常见。</td></tr>
+              <tr><td><strong>基荷</strong></td><td>一天中始终存在的最低负荷，如夜间保温、服务器。</td></tr>
+              <tr><td><strong>峰谷差</strong></td><td>最大负荷与最小负荷之差，决定储能/削峰空间。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>价格与市场</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">术语</th><th>一句话解释</th></tr></thead>
+            <tbody>
+              <tr><td><strong>峰平谷</strong></td><td>按时间段划分的不同电价，峰最贵、谷最便宜。</td></tr>
+              <tr><td><strong>尖峰电价</strong></td><td>在峰段中再切出的最贵时段，通常出现在极端高温/低温。</td></tr>
+              <tr><td><strong>两部制</strong></td><td>电度电费 + 基本电费的计价方式。</td></tr>
+              <tr><td><strong>需量电费</strong></td><td>按最大需量收的基本电费。</td></tr>
+              <tr><td><strong>容量电费</strong></td><td>按变压器容量收的基本电费。</td></tr>
+              <tr><td><strong>力调电费</strong></td><td>按功率因数高低产生的奖励或罚款。</td></tr>
+              <tr><td><strong>代理购电</strong></td><td>用户不直接参与市场，由电网代理购电的价格机制。</td></tr>
+              <tr><td><strong>日前市场</strong></td><td>提前一天申报次日 96 点电量与价格的市场。</td></tr>
+              <tr><td><strong>偏差考核</strong></td><td>实际用电与申报不一致时的费用或处罚。</td></tr>
+              <tr><td><strong>需求响应</strong></td><td>电网请用户在高峰少用电并给予补偿的机制。</td></tr>
+              <tr><td><strong>基线</strong></td><td>用于计算“本来会用多少电”的参照曲线。</td></tr>
+              <tr><td><strong>虚拟电厂</strong></td><td>把分散的可调资源聚合起来，像一个电厂一样参与市场。</td></tr>
+              <tr><td><strong>绿电 / 绿证</strong></td><td>可再生能源电量 / 其环境属性凭证。</td></tr>
+              <tr><td><strong>排放因子</strong></td><td>单位电量对应的二氧化碳排放量。</td></tr>
+              <tr><td><strong>CCER</strong></td><td>国家核证自愿减排量，可用于碳市场抵消。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="myth">五个常见误解</h2>
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>“负荷就是用电量”</h4>
+            <p>错。负荷通常是功率（kW），电量是能量（kWh）。两者差一个时间因子，混用会让所有指标失去意义。</p>
+          </div>
+          <div class="card tight">
+            <h4>“电表数据是准的”</h4>
+            <p>错。倍率、接线、时钟、通信都会出错。行业里“先怀疑表”不是玩笑，是经验。</p>
+          </div>
+          <div class="card tight">
+            <h4>“节能就是减碳”</h4>
+            <p>不一定。要看电网因子、时段、绿电比例。储能省电费但可能增碳，是真实存在的权衡。</p>
+          </div>
+          <div class="card tight">
+            <h4>“预测越准收益越高”</h4>
+            <p>不一定。收益取决于误差落在哪个时段、是否触发考核、调度能否执行。谷段误差和峰段误差的价值不同。</p>
+          </div>
+        </div>
+
+        <h2 id="qa">常见问题</h2>
+        <details class="qa">
+          <summary>Q1：我不是电力专业，这些要学到什么程度？</summary>
+          <div class="ans">能读懂电费单、能说清测点数据的单位与口径、知道常见设备在系统中的位置即可。不需要会设计配电系统，也不需要会算潮流。面试深挖的是“你怎么保证数据口径正确”，不是“你会不会继电保护”。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：为什么项目里的电价是 1.15 / 0.72 / 0.38？</summary>
+          <div class="ans">这是仿真设定，量级参考国内一般工商业峰平谷价差，不代表任何地区现行目录电价。真实项目必须以当地最新电价政策、电压等级和用户类别为准，并且要区分是否参与市场交易。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：CT/PT 倍率错了，模型能发现吗？</summary>
+          <div class="ans">单看一条曲线很难，因为形状可能完全正常。需要结合三条线索：① 与同类型测点的水平比值；② 与历史同期的跳变；③ 换表/改线工单记录。这也是为什么“异常识别”必须和台账、工单结合。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：需量到底按 15 分钟还是 1 分钟算？</summary>
+          <div class="ans">国内常见需量周期是 15 分钟，但不同地区、不同合同可能不同，也有用滑差（每分钟滚动 15 分钟）的口径。做削峰算法前必须确认当地口径，否则会把“峰值”算低或算高。</div>
+        </details>
+        <details class="qa">
+          <summary>Q5：园区有光伏，负荷预测应该预测什么？</summary>
+          <div class="ans">看你给谁用。如果给购电计划，要预测<strong>净负荷</strong>（用电减光伏）；如果给生产调度，要分别预测负荷与光伏。两者误差特性不同，混在一起会让模型难以解释。项目二用的是净负荷口径。</div>
+        </details>
+
+        <h2 id="check">自测：能不能过行业这一关</h2>
+        <ul class="checklist">
+          <li>能在一分钟内说清 kW、kWh、kW（需量）、kVA 的区别，并各举一个项目字段。</li>
+          <li>能画出“电表 → 网关 → 时序库 → EMS → 算法”的链路，并说出每段可能出的问题。</li>
+          <li>能解释为什么两部制电价下“削峰”比“省电量”更直接省钱。</li>
+          <li>能算出一个储能套利的净收益，并主动扣掉往返效率。</li>
+          <li>能说清项目二为什么“省电费但增碳”，以及换成分时因子后结论可能怎么变。</li>
+          <li>能针对工业园区、商业综合体、数据中心分别说出一个关键特征。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">下一步读什么</b>
+          <p>行业概念有了，接下来补工程实现：<a href="11-timeseries.html">专题 B2 · 时序数据工程进阶</a> 讲怎么把这些字段变成可靠的特征矩阵；如果你更想先看算法，可以直接跳到 <a href="12-forecast-advanced.html">专题 B3 · 预测算法进阶</a>。</p>
+        </div>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 专题 B1 · 数据与指标均可复现
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

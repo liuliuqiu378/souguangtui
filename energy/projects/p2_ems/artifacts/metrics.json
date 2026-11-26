@@ -1,0 +1,60 @@
+{
+  "clean": {
+    "raw_rows": 230600,
+    "duplicates_removed": 200,
+    "negative_values": 40,
+    "zero_values": 60,
+    "clean_rows": 230400,
+    "raw_missing_rate": 0.0068,
+    "missing_after_fill": 0.0003
+  },
+  "detect": {
+    "eval_window": [
+      "2024-07-31",
+      "2024-08-29"
+    ],
+    "samples": 1200,
+    "positives": 112,
+    "tp": 108,
+    "fp": 6,
+    "fn": 4,
+    "tn": 1082,
+    "precision": 0.947,
+    "recall": 0.964,
+    "f1": 0.956,
+    "alert_rate": 0.095,
+    "by_type": [
+      {
+        "type": "传感器卡死(恒定值)",
+        "labeled": 6,
+        "hit": 6,
+        "recall": 1.0
+      },
+      {
+        "type": "倍率配置错误",
+        "labeled": 33,
+        "hit": 33,
+        "recall": 1.0
+      },
+      {
+        "type": "异常尖峰",
+        "labeled": 15,
+        "hit": 11,
+        "recall": 0.733
+      },
+      {
+        "type": "疑似窃电(读数偏低)",
+        "labeled": 50,
+        "hit": 50,
+        "recall": 1.0
+      },
+      {
+        "type": "设备故障(负荷骤降)",
+        "labeled": 32,
+        "hit": 32,
+        "recall": 1.0
+      }
+    ]
+  },
+  "iforest_threshold": 0.61867
+}

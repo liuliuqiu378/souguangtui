@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 章 · 时序数据与机器学习基础 | 能源数据与算法工程师</title>
+<meta name="description" content="从零理解时间序列：趋势、季节、残差，采样与聚合，预测问题定义，MAE/RMSE/MAPE 的适用边界，时间切分与数据泄漏。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 2 章 · <b>时序数据与机器学习基础</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 02 · BASICS</div>
+          <h1>时序数据与机器学习基础</h1>
+          <p class="lead">这一章只做一件事：让你看到一条负荷曲线时，脑子里能自动拆出<strong>趋势、季节、周期、残差</strong>，并且知道“预测”这件事到底在预测什么、怎么算才算公平。</p>
+          <div class="page-meta">
+            <span>预计 70 分钟</span>
+            <span>前置：第 1 章（没写过 Python 先读零基础补课）</span>
+            <span>产出：能独立完成一次时间切分评估</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">读这一章前，只需要先认三个词</b>
+          <p><strong>特征</strong>＝用来判断的线索（输入）；<strong>标签</strong>＝要预测的答案（输出）；<strong>模型</strong>＝从线索到答案的公式。这三个词如果还陌生，先读 <a href="00-primer.html">零基础补课</a> 里的“机器学习 12 个词”，十分钟就够。</p>
+        </div>
+
+        <h2 id="what">时序数据到底特殊在哪</h2>
+        <p>普通表格的一行是一条独立样本：用户 A、用户 B 互不影响。时序数据不一样——<strong>相邻时刻高度相关，顺序不能打乱，而且“未来”在训练时拿不到</strong>。这三点决定了后面所有的处理方式。</p>
+
+        <div class="grid-3">
+          <div class="card tight"><h4>① 有序</h4><p>00:00 和 00:15 的关系，远比 00:00 和 13:45 近。打乱顺序等于毁掉信息。</p></div>
+          <div class="card tight"><h4>② 自相关</h4><p>上一刻的负荷是下一刻最好的预测因子。这也是“昨日同期”基线往往不弱的原因。</p></div>
+          <div class="card tight"><h4>③ 不可回看</h4><p>预测明天时，明天的温度、负荷都不存在。训练集里任何“未来信息”都会造成虚假的高分。</p></div>
+        </div>
+
+        <h3>一条真实的负荷长什么样</h3>
+        <p>下面是项目一生成的原始数据，两周一景。你可以先不看任何模型，只用眼睛找规律。</p>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_series_2weeks.png" alt="两周负荷曲线，展示工作日与周末差异">
+          <figcaption><b>两周负荷（15 分钟粒度）。</b>每天有两个明显的峰（上午、傍晚），夜间是深谷；周六周日整体下移、早峰变缓。</figcaption>
+          <div class="fig-how"><b>怎么练眼：</b>用手指沿曲线走一遍，说出“现在是几点、为什么高/低”。能把曲线和作息对应起来，你就具备了做特征工程最重要的直觉。</div>
+        </figure>
+
+        <h3>把一条曲线拆成四块</h3>
+        <p>经典分解：<code>观测值 = 趋势 + 季节 + 周期 + 残差</code>。不用背公式，先理解每一块对应业务里的什么。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">成分</th><th style="width:34%">是什么</th><th>在你的项目里对应什么</th></tr></thead>
+            <tbody>
+              <tr><td><strong>趋势</strong></td><td>长期缓慢上升或下降</td><td>园区扩产、新增租户、设备老化导致的整体抬升或下滑</td></tr>
+              <tr><td><strong>季节</strong></td><td>固定周期重复的形态</td><td>日内双峰（24h）、周内工作日/周末（7d）、年度夏冬空调（365d）</td></tr>
+              <tr><td><strong>周期</strong></td><td>非严格固定长度的波动</td><td>节假日、生产排班、订单季——知道有，但不好用固定正弦描述</td></tr>
+              <tr><td><strong>残差</strong></td><td>扣掉上面三项后剩下的随机部分</td><td>天气突变、临时加班、测量噪声。这部分才是“不可预测”的下限</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_typical_days.png" alt="典型日负荷曲线：工作日、周末、节假日对比">
+          <figcaption><b>典型日对比。</b>同一条曲线按“工作日 / 周末 / 节假日”分组取平均后，形态差异非常清楚。</figcaption>
+          <div class="fig-how"><b>这解释了为什么日历特征有效：</b>模型不需要“理解”什么是周末，只要给它 <code>is_weekend</code>，它就能自己学出两组不同的曲线。</div>
+        </figure>
+
+        <div class="callout what">
+          <b class="t">“分解”有什么用</b>
+          <p>它让你判断<strong>误差该归咎于谁</strong>。如果模型在趋势上偏了，多半是训练数据太旧；如果在日内形态上偏了，是特征没表达好；如果在残差上偏了，那可能是天气突变，属于正常不可控。不会分解的人，看到误差变大只会说“模型不行”。</p>
+        </div>
+
+        <h2 id="sample">采样、聚合与对齐</h2>
+        <p>现实数据很少刚好是你要的频率。电表可能 1 分钟一条，结算要 15 分钟，预测要 1 小时。这三者之间的转换就是重采样。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>操作</th><th>方向</th><th>该用什么聚合</th><th>典型错误</th></tr></thead>
+            <tbody>
+              <tr><td>降采样（15min → 1h）</td><td>变粗</td><td>功率用 <strong>mean</strong>；电量用 <strong>sum</strong></td><td>把功率求和，数值放大 4 倍</td></tr>
+              <tr><td>升采样（1h → 15min）</td><td>变细</td><td>插值 / 前向填充</td><td>直接线性插值造出“看起来很真”的假峰</td></tr>
+              <tr><td>对齐多源</td><td>统一时间轴</td><td>按时间戳 join，允许容差</td><td>时区不一致，整体错 8 小时</td></tr>
+              <tr><td>补齐缺失时段</td><td>补全索引</td><td><code>reindex</code> 到完整频率</td><td>只 fillna 不补索引，缺口被“跳过”，滞后特征全错位</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>正确姿势是先建完整时间索引，再填值。否则 <code>shift(1)</code> 拿到的不是“上一时刻”，而是“上一条存在的记录”，在缺失时会悄悄错位。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">pandas 重采样与对齐</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 1) 建完整索引：15 分钟一条，一天 96 条</span>
+idx = pd.date_range(<span class="s">"2024-01-01"</span>, <span class="s">"2024-01-07 23:45"</span>, freq=<span class="s">"15min"</span>)
+s = df.set_index(<span class="s">"ts"</span>)[<span class="s">"load_mw"</span>].reindex(idx)
+
+<span class="c"># 2) 降采样：功率取均值，电量取求和</span>
+hourly_power = s.resample(<span class="s">"1h"</span>).mean()
+hourly_energy = s.resample(<span class="s">"1h"</span>).sum() / <span class="n">4</span>   <span class="c"># 15min 的 MW → MWh</span>
+
+<span class="c"># 3) 短缺口插值，长缺口留空（后面用缺失标记）</span>
+s_filled = s.interpolate(limit=<span class="n">8</span>)      <span class="c"># 最多补 2 小时</span>
+
+<span class="c"># 4) 滞后特征必须在补全索引之后做</span>
+lag1 = s_filled.shift(<span class="n">1</span>)
+lag96 = s_filled.shift(<span class="n">96</span>)              <span class="c"># 昨日同一时刻</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：`resample().mean()` 会悄悄跳过 NaN</b>
+          <p>默认 <code>mean()</code> 不计 NaN。如果一小时里 3 个点缺失，剩下 1 个点也会被当成整小时均值，看起来“完整”，实际代表性很差。要同时看 <code>count()</code>，低于阈值（比如 3/4）就置空。</p>
+        </div>
+
+        <h2 id="forecast">“预测”到底在预测什么</h2>
+        <p>业务说“预测明天负荷”，技术上有四种完全不同的定义。定义不清，评估必然吵架。</p>
+
+        <div class="grid-2">
+          <div class="card"><h4>按预测长度：超短期 / 短期 / 中期</h4><p>超短期（分钟~小时）用于实时控制；短期（日前 24h）用于购电与调度；中期（周~月）用于检修与合同。本教程聚焦<strong>日前 24 小时</strong>。</p></div>
+          <div class="card"><h4>按输出形式：点预测 / 区间预测</h4><p>点预测给一个数；区间预测给“90% 概率落在 [低, 高]”。做需量控制时，<strong>上界</strong>比均值更有用。</p></div>
+          <div class="card"><h4>按步长策略：直接多步 / 递归</h4><p>直接多步：一个模型一次输出 24 个点（本项目把 horizon 当特征）。递归：预测 1 步，再拿预测值预测下一步，误差会累积。</p></div>
+          <div class="card"><h4>按起点：滚动 / 固定</h4><p>每天 0 点用当天已知信息预测未来 24h，叫日前滚动。要明确“预测时刻能拿到哪些数据”，否则就是泄漏。</p></div>
+        </div>
+
+        <div class="callout how">
+          <b class="t">把任务写成一句话（面试必背）</b>
+          <p>“输入是预测起点之前 7 天的 15 分钟负荷、气象预报与日历信息；输出是未来 24 个小时的逐时负荷；评估用时间切分，主指标 MAPE，辅以 MAE 和峰段误差。”</p>
+        </div>
+
+        <h2 id="metric">指标：别只会说 MAPE</h2>
+        <p>三个指标各有适用边界。面试官问“为什么不用 RMSE”时，你要能答出业务含义，而不是数学定义。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:12%">指标</th><th style="width:30%">计算</th><th style="width:28%">优点</th><th>陷阱</th></tr></thead>
+            <tbody>
+              <tr><td><strong>MAE</strong></td><td>平均绝对误差，单位同负荷</td><td>直观：“平均差 5.76 MW”</td><td>不区分大误差，对峰值不敏感</td></tr>
+              <tr><td><strong>RMSE</strong></td><td>均方误差开根号</td><td>惩罚大误差，适合安全/容量场景</td><td>单位不直观，易被少数极端点主导</td></tr>
+              <tr><td><strong>MAPE</strong></td><td>平均 |误差/实际|</td><td>跨量级可比，汇报友好</td><td><strong>实际值接近 0 时爆炸</strong>；低估与高估不对称</td></tr>
+              <tr><td><strong>WAPE</strong></td><td>Σ|误差| / Σ|实际|</td><td>不会被单点小值放大，适合总量考核</td><td>掩盖局部时段的严重偏差</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">MAPE 的真实陷阱</b>
+          <p>夜间负荷可能只有 20 MW。此时差 2 MW 就是 10%，而白天 200 MW 差 2 MW 只有 1%。所以 MAPE 天然对谷段苛刻。本项目谷段 MAPE 2.01%、峰段 1.51%，并不是“谷段模型更差”，很大程度是指标本身放大了小基数误差。汇报时要把这点说清楚。</p>
+        </div>
+
+        <h3>只看总体指标是不够的</h3>
+        <p>一个模型总体 MAPE 1.78%，听起来很好。但如果它在每天 18:00 的晚峰系统性偏低 5%，业务依然会不满——因为峰段决定了需量和购电成本。所以必须做<strong>分组误差</strong>。</p>
+
+        <div class="grid-4">
+          <div class="stat teal"><div class="num">1.78<small>%</small></div><div class="lbl">总体 MAPE</div></div>
+          <div class="stat"><div class="num">1.51<small>%</small></div><div class="lbl">峰段 MAPE</div></div>
+          <div class="stat"><div class="num">2.01<small>%</small></div><div class="lbl">谷段 MAPE</div></div>
+          <div class="stat amber"><div class="num">5.76<small> MW</small></div><div class="lbl">MAE</div></div>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_error_breakdown.png" alt="按小时与预测步长的误差分解">
+          <figcaption><b>误差分解。</b>左：按目标小时的平均绝对百分比误差；右：按预测步长（提前 1~24 小时）的误差变化。</figcaption>
+          <div class="fig-how"><b>怎么读：</b>如果误差随 horizon 快速上升，说明模型过度依赖“最近值”；如果某个小时特别差，通常是该时段的规律没被特征表达（例如晚峰受气温影响更大）。</div>
+        </figure>
+
+        <h2 id="split">评估：时间切分与数据泄漏</h2>
+        <p>这是新手最容易翻车的地方，也是最容易被面试官识破的地方。</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h4 class="bad" style="color:var(--red)">✗ 随机切分（错误）</h4>
+            <p>把 2 年数据随机打乱，80% 训练、20% 测试。结果：测试集里 10 月 1 日 10:00 的样本，模型在训练时见过 10 月 1 日 09:45 和 10:15。相邻点高度相关，等于<strong>抄答案</strong>。指标会好得离谱。</p>
+          </div>
+          <div class="card">
+            <h4 class="good" style="color:#15803d">✓ 时间切分（正确）</h4>
+            <p>按时间先后切：前 18 个月训练，中间 3 个月验证调参，最后 3 个月测试。测试集完全不参与任何决策。这样得到的指标才代表“面向未来”的真实能力。</p>
+          </div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">train.py 中的切分逻辑（真实代码）</span><button class="copy">复制</button></div>
+          <pre>train = df[df[<span class="s">"origin_ts"</span>] &lt;  <span class="s">"2024-07-01"</span>]
+valid = df[(df[<span class="s">"origin_ts"</span>] &gt;= <span class="s">"2024-07-01"</span>) &amp; (df[<span class="s">"origin_ts"</span>] &lt; <span class="s">"2024-10-01"</span>)]
+test  = df[df[<span class="s">"origin_ts"</span>] &gt;= <span class="s">"2024-10-01"</span>]
+
+<span class="c"># 注意：切分依据是“预测起点时间”，不是目标时间。</span>
+<span class="c"># 否则同一次预测产生的 24 个样本会被拆到训练/测试两边，造成泄漏。</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">三种最隐蔽的泄漏</b>
+          <p><strong>① 用目标时刻的气象实测值</strong>：预测明天却用了明天实际温度，实际只能拿到预报。<strong>② 用全量数据算标准化参数</strong>：均值/方差应该只用训练集算。<strong>③ 用未来的滞后值</strong>：比如把 <code>shift(-1)</code> 当成特征。写特征时养成习惯：问一句“这个数在预测时刻真的存在吗？”</p>
+        </div>
+
+        <h2 id="temp">一个必须亲手看的关系：温度 → 负荷</h2>
+        <p>负荷不是随机的，它主要被人和天气驱动。温度与负荷的关系通常是一个“U 形”：太冷要供暖，太热要制冷，中间舒适区负荷最低。</p>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_temp_scatter.png" alt="温度与负荷的散点关系，呈U形">
+          <figcaption><b>温度—负荷散点。</b>横轴温度，纵轴负荷，颜色区分工作日/周末。可以看到两端抬升的 U 形，以及工作日的整体上移。</figcaption>
+          <div class="fig-how"><b>它直接指导特征设计：</b>不要只给原始温度，要给 <code>temp</code>、<code>temp²</code>、<code>cooling = max(0, temp−26)</code>、<code>heating = max(0, 18−temp)</code>，让树模型更容易切出非线性。</div>
+        </figure>
+
+        <h2 id="workflow">最小机器学习工作流</h2>
+        <p>把上面所有概念串起来，就是一个可复用的六步流程。项目一、项目二都是这个骨架。</p>
+
+        <div class="steps">
+          <div class="step"><h4>读数据并建立时间索引</h4><p>统一时区、排序、去重、reindex 到固定频率。这一步不做好，后面全错。</p></div>
+          <div class="step"><h4>清洗与质量标记</h4><p>缺失、越界、突变。决定哪些插值、哪些置空、哪些打标记。</p></div>
+          <div class="step"><h4>构造特征与标签</h4><p>特征必须“在预测时刻可知”；标签是未来值。逐行确认时间关系。</p></div>
+          <div class="step"><h4>时间切分</h4><p>训练 / 验证 / 测试按时间切。验证集只用于早停和调参。</p></div>
+          <div class="step"><h4>训练与对比基线</h4><p>至少两个基线：昨日同期、上周同期。模型赢不了基线，就没有上线价值。</p></div>
+          <div class="step"><h4>评估、保存、解释</h4><p>总体 + 分组指标、特征重要性、典型失败案例。保存模型与特征列顺序。</p></div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">最小可运行示例（30 行看懂全流程）</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> pandas <span class="k">as</span> pd, numpy <span class="k">as</span> np
+<span class="k">from</span> sklearn.linear_model <span class="k">import</span> Ridge
+<span class="k">from</span> sklearn.metrics <span class="k">import</span> mean_absolute_error
+
+df = pd.read_csv(<span class="s">"data/p1_load/load_15min_clean_truth.csv"</span>, parse_dates=[<span class="s">"ts"</span>])
+s = df.set_index(<span class="s">"ts"</span>)[<span class="s">"load_mw"</span>]
+h = s.resample(<span class="s">"1h"</span>).mean()                  <span class="c"># 聚合到小时</span>
+
+X = pd.DataFrame({<span class="s">"lag1"</span>: h.shift(<span class="n">1</span>), <span class="s">"lag24"</span>: h.shift(<span class="n">24</span>),
+                  <span class="s">"lag168"</span>: h.shift(<span class="n">168</span>),
+                  <span class="s">"hour"</span>: h.index.hour})
+y = h
+d = X.assign(y=y).dropna()
+train, test = d[d.index &lt; <span class="s">"2024-10-01"</span>], d[d.index &gt;= <span class="s">"2024-10-01"</span>]
+
+m = Ridge().fit(train.drop(columns=<span class="s">"y"</span>), train[<span class="s">"y"</span>])
+pred = m.predict(test.drop(columns=<span class="s">"y"</span>))
+<span class="k">print</span>(<span class="s">"MAE"</span>, mean_absolute_error(test[<span class="s">"y"</span>], pred))
+<span class="k">print</span>(<span class="s">"MAPE"</span>, np.mean(np.abs(pred - test[<span class="s">"y"</span>]) / test[<span class="s">"y"</span>]) * <span class="n">100</span>)
+</pre>
+        </div>
+
+        <p>这段代码不追求效果，只让你确认三件事：特征怎么来、切分怎么做、指标怎么算。项目一会在它基础上扩展到 25 个特征、24 个预测步长。</p>
+
+        <div class="callout field">
+          <b class="t">关于“看图建立概念”</b>
+          <p>想找更多参考图，可以搜索这些关键词：<em>typical daily load curve</em>、<em>seasonal decomposition time series</em>、<em>temperature load U-shape</em>、<em>peak valley pricing China</em>。看图时问自己：这条曲线的拐点对应什么业务动作？</p>
+        </div>
+
+        <h2 id="check">自测</h2>
+        <ul class="checklist">
+          <li>说出趋势、季节、周期、残差在本项目里各指什么。</li>
+          <li>为什么 15 分钟功率聚合到小时要用 mean，而电度要用 sum？</li>
+          <li>为什么不能随机切分？举一个具体的时间点说明泄漏。</li>
+          <li>MAPE 在什么情况下会失真？你会补什么指标？</li>
+          <li>“日前 24 小时直接多步预测”是什么意思？和递归预测的区别？</li>
+          <li>如果模型总体 MAPE 很好但峰段偏差大，业务会怎么反应？</li>
+        </ul>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="01-role.html">← 上一章：岗位拆解</a>
+          <a class="btn-ghost" style="text-decoration:none" href="03-data.html">下一章：数据工程与质量治理 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 2 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

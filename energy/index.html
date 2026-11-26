@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>从 0 到能干活 · 能源数据与算法工程师实战教程</title>
+<meta name="description" content="面向能源 EMS / 电力时序数据岗位的系统教程：8 周从零基础到可面试，含短期负荷预测与园区 EMS 两个完整可运行项目。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">能源数据 &amp; 算法工程师 · <b>课程总览</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <section class="hero">
+          <div class="kicker">ENERGY DATA · ALGORITHM · EMS</div>
+          <h1>从 0 到能干活：<br>能源数据与算法工程师 8 周实战教程</h1>
+          <p>对应「数据&amp;算法工程师（能源 EMS / 电力时序）」岗位。不是知识点拼盘，而是一条完整路径：先建立概念，再动手清洗与建模，最后把模型做成服务，并用两个能当面演示的项目证明你会。</p>
+          <div class="badges">
+            <span class="badge">2 个<b>完整可运行</b>项目</span>
+            <span class="badge">全部<b>仿真数据</b>，一键复现</span>
+            <span class="badge">真实指标<b>MAPE 1.78%</b> / <b>F1 0.956</b></span>
+            <span class="badge"><b>5 个</b>进阶专题</span>
+            <span class="badge">从<b>小白</b>到能面试</span>
+          </div>
+        </section>
+
+        <h2 id="result">先看结论：学完你能做出什么</h2>
+        <p class="lead">这套教程最终交付的不是“我看过”，而是“我做过、跑过、讲得清”。两个项目都可以在你自己的电脑上从零跑出结果，面试时能直接打开代码和图表讲。</p>
+
+        <div class="grid-4">
+          <div class="stat teal"><div class="num">1.78<small>%</small></div><div class="lbl">项目一测试集 MAPE<br>（优于昨日同期 5.30%）</div></div>
+          <div class="stat"><div class="num">0.956</div><div class="lbl">项目二异常识别 F1<br>精确率 0.947 / 召回 0.964</div></div>
+          <div class="stat amber"><div class="num">4.99<small>%</small></div><div class="lbl">储能调度节省电费<br>60 天累计 14.75 万元</div></div>
+          <div class="stat"><div class="num">2</div><div class="lbl">可演示项目<br>均含 API、图表与报告</div></div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">关键说明</b>
+          <p>教程里的数据<strong>全部由脚本仿真生成</strong>，但生成逻辑严格对齐真实业务：15 分钟采样、双峰负荷、温度响应、节假日、采集失败、倍率错误、窃电、设备故障、峰平谷电价、光伏与储能约束。所有指标都来自本机真实训练与评估，不是编的数字。</p>
+        </div>
+
+        <h2 id="role">这个岗位到底在做什么</h2>
+        <p>招聘信息里的四条职责，翻译成大白话就是：<strong>把电表里脏兮兮的数字，变成能预测、能报警、能省钱的算法，并且稳定地跑在线上。</strong>下面拆成六件日常事，是为了让你看清每一块具体在做什么。</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>① 数据治理：先把地基打牢</h3>
+            <p>测点数据清洗、缺失填充、异常剔除，建立数据质量监控。真实电表数据会有缺失、重复、倒走、负值、卡死、倍率错误——不清洗，后面所有模型都是错的。</p>
+          </div>
+          <div class="card">
+            <h3>② 负荷预测：明天用多少电</h3>
+            <p>用历史负荷、气象、日历做短期预测（日前，即提前一天；24 点 / 96 点）。它是购电计划、机组安排、储能调度、需量控制的输入。</p>
+          </div>
+          <div class="card">
+            <h3>③ 异常识别：谁在偷电，哪台设备坏了</h3>
+            <p>识别异常用电、偷漏电、设备故障。难点不是模型，而是<strong>没有标签、误报太多、业务不认</strong>。</p>
+          </div>
+          <div class="card">
+            <h3>④ 优化调度：什么时候充，什么时候放</h3>
+            <p>结合峰谷电价、光伏、储能 SOC 与功率约束，做需求响应和储能调度，把算法变成电费单上的数字。</p>
+          </div>
+          <div class="card">
+            <h3>⑤ 服务化：让算法真正上线</h3>
+            <p>把模型封装成微服务，对接平台；做版本管理、线上监控、精度与漂移跟踪、迭代调优。只会 Notebook 的人，卡在这一步。</p>
+          </div>
+          <div class="card">
+            <h3>⑥ 和业务对齐：算法要能被使用</h3>
+            <p>告警要能解释、能派工单、能闭环；预测误差要能说清是天气还是数据问题。这决定了你的模型是“Demo”还是“产品”。</p>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">为什么这个方向值得投入</b>
+          <p>“双碳”、新型电力系统、园区能源管理、虚拟电厂都在扩张，而既懂时序数据、又懂算法落地的人很少。岗位要求的工具（Pandas、LightGBM、时序库、FastAPI）并不冷门，难的是<strong>把一整套链路串起来</strong>——这正是本教程要解决的。</p>
+        </div>
+
+        <h2 id="map">能力地图：你需要补的其实是这 8 块</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>能力块</th><th>你要达到的程度</th><th>对应章节</th></tr></thead>
+            <tbody>
+              <tr><td><strong>业务与术语</strong></td><td>听得懂 EMS、测点、需量、峰平谷、SOC、需求响应；知道数据从哪来到哪去</td><td><a href="01-role.html">第 1 章</a></td></tr>
+              <tr><td><strong>时序与 ML 基础</strong></td><td>能解释趋势/季节/残差，会做时间切分，懂 MAE/MAPE/WAPE 的适用边界</td><td><a href="02-basics.html">第 2 章</a></td></tr>
+              <tr><td><strong>数据工程</strong></td><td>能独立完成清洗、缺失/异常处理、质量评分；会用 InfluxDB / TimescaleDB 存取</td><td><a href="03-data.html">第 3 章</a></td></tr>
+              <tr><td><strong>预测建模</strong></td><td>能从 0 做特征、训练 LightGBM、和 ARIMA/Prophet 基线对比、解释误差</td><td><a href="04-model.html">第 4 章</a></td></tr>
+              <tr><td><strong>异常识别</strong></td><td>能设计基线、组合规则与模型、评估并治理误报</td><td><a href="05-anomaly.html">第 5 章</a></td></tr>
+              <tr><td><strong>服务化</strong></td><td>能把模型封装 API、容器化、做版本与监控、说清漂移</td><td><a href="06-deploy.html">第 6 章</a></td></tr>
+              <tr><td><strong>行业与市场</strong></td><td>看得懂电费单，说清计量口径、电价机制与场景差异，不犯单位/口径错误</td><td><a href="10-power.html">专题 B1</a></td></tr>
+              <tr><td><strong>优化与工程</strong></td><td>能写储能调度模型；也能让代码可复现、可测试、可回滚</td><td><a href="13-optimize.html">B4</a> / <a href="14-engineering.html">B5</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="projects">两个项目：一个通用，一个行业</h2>
+        <p>项目不是“跑个模型看看分数”，而是完整档案：背景、任务、数据、方法、结果、误差分析、工程化、面试讲法。</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="kicker">PROJECT 01 · 通用</div>
+            <h3>区域电网短期负荷预测</h3>
+            <p>2 年、15 分钟粒度、约 7 万行原始数据；含气象、节假日、需求响应事件与脏数据。日前 24 小时滚动预测，LightGBM 多步长建模，对比 3 个基线，并做特征消融。</p>
+            <div class="chips">
+              <span class="chip teal">MAPE 1.78%</span>
+              <span class="chip">峰段 1.51%</span>
+              <span class="chip">25 个特征</span>
+              <span class="chip amber">含 FastAPI 推理服务</span>
+            </div>
+            <p style="margin-top:14px"><a href="07-project-load.html">进入项目一 →</a></p>
+          </div>
+          <div class="card">
+            <div class="kicker">PROJECT 02 · 工业 / 政务</div>
+            <h3>工业园区 EMS：数据治理 + 异常用能 + 储能调度</h3>
+            <p>40 个计量点、60 天、23 万行读数；注入窃电、倍率错误、设备故障、传感器卡死、尖峰五类异常。用同业基线 + 规则 + 孤立森林识别，再用线性规划做峰谷套利。</p>
+            <div class="chips">
+              <span class="chip teal">F1 0.956</span>
+              <span class="chip">1200 测点日评估</span>
+              <span class="chip">节省 4.99%</span>
+              <span class="chip amber">含调度与碳核算</span>
+            </div>
+            <p style="margin-top:14px"><a href="08-project-ems.html">进入项目二 →</a></p>
+          </div>
+        </div>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p1_forecast_week.png" alt="项目一：测试集一周预测效果">
+          <figcaption><b>项目一成果示例：</b>测试集（2024-10-14 ~ 10-20）实际负荷与日前预测对比。模型对双峰形态、周末下移、节假日响应的拟合都比较稳定。</figcaption>
+          <div class="fig-how"><b>怎么看：</b>先看“峰谷是否跟得上”，再看“峰顶有没有系统性偏低”。平均误差漂亮但峰值持续偏低，在业务上是不可接受的。</div>
+        </figure>
+
+        <figure class="fig">
+          <img src="assets/img/charts/p2_dispatch.png" alt="项目二：储能日前优化调度">
+          <figcaption><b>项目二成果示例：</b>2024-08-15 的储能日前优化。谷段充电、峰段放电，同时受并网需量上限约束；最下方是 SOC 与充放电功率。</figcaption>
+          <div class="fig-how"><b>怎么看：</b>红色为放电、绿色为充电；购电曲线被“削平”到需量上限附近，说明优化在同时做套利和削峰。</div>
+        </figure>
+
+        <h2 id="advanced">进阶专题：把知识补成体系</h2>
+        <p>主线（第 1~9 章）保证你能干活；这 5 个专题解决两件事：<strong>面试被追问时不露怯</strong>，以及<strong>真实项目里少踩坑</strong>。它们不是必读，但每读完一个，你对同一件事的解释会深一层。</p>
+
+        <div class="chapter-grid">
+          <a class="chapter-card" href="10-power.html"><div class="no">SPECIAL B1</div><h3>电力与能源行业基础</h3><p>电力系统五段、功率/电量/需量/容量、电表与采集规约、EMS 家族、两部制与峰谷电价、电力市场、碳核算、八类场景、40 个术语。</p><div class="tags"><span class="chip">行业背景</span><span class="chip">必修</span></div></a>
+          <a class="chapter-card" href="11-timeseries.html"><div class="no">SPECIAL B2</div><h3>时序数据工程进阶</h3><p>时区与时间语义、96 点日历、pandas 12 个操作、缺失机制、稳健异常、进阶特征、Parquet/DuckDB/Spark、训练服务一致性。</p><div class="tags"><span class="chip">数据工程</span><span class="chip">实践</span></div></a>
+          <a class="chapter-card" href="12-forecast-advanced.html"><div class="no">SPECIAL B3</div><h3>预测算法进阶</h3><p>任务六维、指标与基线、ARIMA/Prophet、GBDT 细节、Optuna、深度模型、分位数与 Conformal、层级对账、漂移重训。</p><div class="tags"><span class="chip">算法深度</span><span class="chip">进阶</span></div></a>
+          <a class="chapter-card" href="13-optimize.html"><div class="no">SPECIAL B4</div><h3>优化调度与需求响应</h3><p>LP/MILP 与求解器、储能五约束、需量建模、DR 基线、光伏/充电桩/V2G、虚拟电厂、鲁棒与 CVaR、滚动执行闭环。</p><div class="tags"><span class="chip">决策优化</span><span class="chip">高价值</span></div></a>
+          <a class="chapter-card" href="14-engineering.html"><div class="no">SPECIAL B5</div><h3>算法工程实践</h3><p>项目结构、配置与密钥、结构化日志、测试金字塔、DVC/MLflow、CI/CD、Docker/K8s、性能优化、监控告警、成本与合规。</p><div class="tags"><span class="chip">工程化</span><span class="chip">落地</span></div></a>
+        </div>
+
+        <div class="callout field">
+          <b class="t">时间不够时，按这个顺序选</b>
+          <p>面试前两周：<strong>B1 → B4</strong>（行业口径 + 调度收益，最容易被追问）。正在做项目：<strong>B2</strong>（数据错一次，后面全错）。想冲高级岗或大厂：<strong>B3 → B5</strong>（概率预测、层级对账、工程规范）。</p>
+        </div>
+
+        <h2 id="plan">8 周学习路线（按每天 2 小时、周末 4~6 小时设计）</h2>
+        <div class="timeline">
+          <div class="tl-row"><div class="tl-week">W1</div><div class="tl-body"><h4>建立全局观 + 跑通环境</h4><p>读第 1、2 章；装好 Python 环境；跑通“读 CSV → 聚合 → 画图”的最小脚本；能用自己的话解释这个岗位的 4 项职责。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W2</div><div class="tl-body"><h4>数据工程</h4><p>读第 3 章；独立完成项目一的清洗：去重、补齐、异常剔除、质量报表；理解“该插值还是该置空”。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W3</div><div class="tl-body"><h4>特征 + 第一个模型</h4><p>读第 4 章；完成滞后、滑窗、日历、气象特征；训练 LightGBM，跑出 MAPE，和“昨日同期”基线对比。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W4</div><div class="tl-body"><h4>项目一收尾</h4><p>做时间切分、分时段/分步长误差、消融实验；把模型封装成 FastAPI；整理一页项目报告。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W5</div><div class="tl-body"><h4>异常识别</h4><p>读第 5 章；完成项目二的清洗与日粒度特征；先做规则基线，理解“同业基线”为什么能抵消天气共因。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W6</div><div class="tl-body"><h4>项目二收尾</h4><p>组合规则 + 孤立森林，算 P/R/F1；分析失败案例；跑储能 LP，算清节省电费与碳变化。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W7</div><div class="tl-body"><h4>服务化与上线</h4><p>读第 6 章；把两个项目都做成 API + Docker；补健康检查、版本号、日志与监控指标。</p></div></div>
+          <div class="tl-row"><div class="tl-week">W8</div><div class="tl-body"><h4>表达与冲刺</h4><p>读第 9 章；写简历项目、准备 20 个追问、录 5 分钟演示；把“我做了什么、为什么、结果如何”讲顺。</p></div></div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">8 周是主线，不是上限</b>
+          <p>如果每天能多挤出 1 小时，建议在 W2 前插入 <a href="10-power.html">B1</a>（行业口径），在 W6 后插入 <a href="13-optimize.html">B4</a>（调度建模）；其余专题按面试反馈补。不要为了“读完”牺牲动手时间——能跑通两个项目，比读完所有页面更重要。</p>
+        </div>
+
+        <h2 id="how">怎么用这套教程</h2>
+        <div class="callout field">
+          <b class="t">完全没写过代码？先读这一页</b>
+          <p><a href="00-primer.html">零基础补课</a> 用 60 分钟讲完 Python 最小语法、pandas 与 Excel 的对照、机器学习 12 个核心词。读完再回来，后面的代码就不再是天书。</p>
+        </div>
+        <div class="steps">
+          <div class="step"><h4>先读“是什么”，再动手</h4><p>每章开头都会用生活化类比解释概念，然后给出“在项目里怎么用”。不要跳过概念直接抄代码，面试一问就露馅。</p></div>
+          <div class="step"><h4>代码必须自己跑一遍</h4><p>项目目录里有完整脚本，按 <code>generate_data.py → train.py / detect.py → dispatch.py</code> 的顺序运行。所有随机种子固定，结果可复现。</p></div>
+          <div class="step"><h4>每章末尾的自测题要能口述</h4><p>不是背答案，而是能用自己的项目举例。比如“为什么 MAPE 在夜间会变大”，要能指着图解释。</p></div>
+          <div class="step"><h4>最后把两个项目讲成故事</h4><p>背景 → 难点 → 方案 → 结果 → 取舍 → 如果重做会怎么改。这是面试官真正想听的。</p></div>
+        </div>
+
+        <h3>三条阅读路线，按你的习惯选</h3>
+        <div class="grid-3">
+          <div class="card tight">
+            <h4>路线 A：先建框架，再看项目</h4>
+            <p>第 1 → 2 → 3 → 4 → 5 → 6 章，把“数据怎么来、模型怎么建、服务怎么上”走通，再读项目一、项目二，最后读第 9 章。好处是每个概念都有铺垫，不会在项目里被术语卡住。</p>
+          </div>
+          <div class="card tight">
+            <h4>路线 B：边学边做，用项目驱动</h4>
+            <p>第 1 → 2 → 3 → 4 → 项目一 → 5 → 项目二 → 6 → 9 章。每学一块就落到项目里，成就感强；遇到不懂的术语再回查第 1 章。</p>
+          </div>
+          <div class="card tight">
+            <h4>路线 C：先补行业，再补短板</h4>
+            <p>第 1 → <strong>B1</strong> → 2 → 3 → 4 → 5，然后按需读 B2（数据）、B3（算法）、B4（优化）、B5（工程），最后回到项目与第 9 章。适合跨行转岗、担心“业务说不清”的人。</p>
+          </div>
+        </div>
+        <p>三条路线都对，<strong>唯一不建议的是只读前两章就停</strong>。</p>
+
+        <h3>页面里的四种提示框</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">样式</th><th style="width:20%">含义</th><th>怎么读</th></tr></thead>
+            <tbody>
+              <tr><td><strong>蓝色 ?</strong></td><td>概念解释</td><td>回答“是什么”。先读懂它，再看代码。</td></tr>
+              <tr><td><strong>青色 →</strong></td><td>方法 / 步骤</td><td>回答“怎么做”。通常是可以照着执行的动作。</td></tr>
+              <tr><td><strong>红色 !</strong></td><td>常见坑</td><td>别人踩过的坑，面试也常问，不要跳过。</td></tr>
+              <tr><td><strong>琥珀 ★</strong></td><td>重点提示</td><td>项目现场的判断、口径说明、必须主动交代的边界。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>每张图下面还有一行<strong>“怎么看 / 面试要点”</strong>，那是把图翻译成业务结论的地方；代码块右上角可以一键复制。</p>
+
+        <h2 id="chapters">章节目录</h2>
+        <div class="chapter-grid">
+          <a class="chapter-card" href="01-role.html"><div class="no">CHAPTER 01</div><h3>岗位拆解与知识地图</h3><p>把 JD 翻译成能力项；EMS 系统全景、上下游协作、20 个必会术语。</p><div class="tags"><span class="chip">入门</span><span class="chip">业务</span></div></a>
+          <a class="chapter-card" href="02-basics.html"><div class="no">CHAPTER 02</div><h3>时序数据与机器学习基础</h3><p>趋势/季节/残差、采样与聚合、预测定义、指标陷阱、最小工作流。</p><div class="tags"><span class="chip">基础</span><span class="chip">概念</span></div></a>
+          <a class="chapter-card" href="03-data.html"><div class="no">CHAPTER 03</div><h3>数据工程与数据质量治理</h3><p>六类脏数据、清洗决策树、质量评分体系、InfluxDB / TimescaleDB 实操。</p><div class="tags"><span class="chip">核心</span><span class="chip">数据库</span></div></a>
+          <a class="chapter-card" href="04-model.html"><div class="no">CHAPTER 04</div><h3>特征工程与负荷预测建模</h3><p>五类特征、防止未来信息泄漏、ARIMA/Prophet/LightGBM 对比与调参。</p><div class="tags"><span class="chip">核心</span><span class="chip">建模</span></div></a>
+          <a class="chapter-card" href="05-anomaly.html"><div class="no">CHAPTER 05</div><h3>异常用能识别</h3><p>窃电、倍率、故障、卡死、尖峰；规则+统计+孤立森林；告警治理。</p><div class="tags"><span class="chip">核心</span><span class="chip">无标签</span></div></a>
+          <a class="chapter-card" href="06-deploy.html"><div class="no">CHAPTER 06</div><h3>算法服务化与上线运维</h3><p>FastAPI、Docker、模型版本、精度监控、漂移诊断与重训练。</p><div class="tags"><span class="chip">进阶</span><span class="chip">MLOps</span></div></a>
+          <a class="chapter-card" href="07-project-load.html"><div class="no">PROJECT 01</div><h3>短期负荷预测（完整档案）</h3><p>从原始脏数据到 MAPE 1.78%，含消融、误差分析、API 与面试讲法。</p><div class="tags"><span class="chip teal">可演示</span><span class="chip">通用</span></div></a>
+          <a class="chapter-card" href="08-project-ems.html"><div class="no">PROJECT 02</div><h3>园区 EMS 异常识别与调度</h3><p>23 万行读数、五类异常、F1 0.956、储能套利 4.99%，含碳核算。</p><div class="tags"><span class="chip teal">可演示</span><span class="chip">工业/政务</span></div></a>
+          <a class="chapter-card" href="09-career.html"><div class="no">CHAPTER 09</div><h3>求职表达与 90 天落地</h3><p>简历写法、5 分钟演示脚本、20 个高频追问、入职 90 天计划。</p><div class="tags"><span class="chip">冲刺</span><span class="chip">表达</span></div></a>
+          <a class="chapter-card" href="10-power.html"><div class="no">SPECIAL B1</div><h3>电力与能源行业基础</h3><p>计量、电价、市场、碳核算、八类场景；看懂电费单，不再混用 kW 与 kWh。</p><div class="tags"><span class="chip">行业</span><span class="chip">背景</span></div></a>
+          <a class="chapter-card" href="11-timeseries.html"><div class="no">SPECIAL B2</div><h3>时序数据工程进阶</h3><p>时间语义、96 点日历、pandas 操作、缺失机制、数据管道、训练服务一致性。</p><div class="tags"><span class="chip">工程</span><span class="chip">数据</span></div></a>
+          <a class="chapter-card" href="12-forecast-advanced.html"><div class="no">SPECIAL B3</div><h3>预测算法进阶</h3><p>概率预测、Conformal 区间、层级对账、Optuna、深度模型取舍与漂移重训。</p><div class="tags"><span class="chip">算法</span><span class="chip">进阶</span></div></a>
+          <a class="chapter-card" href="13-optimize.html"><div class="no">SPECIAL B4</div><h3>优化调度与需求响应</h3><p>LP/MILP、储能五约束、需量建模、DR 基线、虚拟电厂与执行闭环。</p><div class="tags"><span class="chip">优化</span><span class="chip">决策</span></div></a>
+          <a class="chapter-card" href="14-engineering.html"><div class="no">SPECIAL B5</div><h3>算法工程实践</h3><p>测试、版本、CI/CD、容器、性能、监控、成本与合规，让结果可交付。</p><div class="tags"><span class="chip">落地</span><span class="chip">规范</span></div></a>
+        </div>
+
+        <h2 id="honest">几点必要的诚实说明</h2>
+        <div class="callout pit">
+          <b class="t">仿真数据的边界</b>
+          <p>本项目注入的异常信号较强（窃电约 -35%、倍率 ×3、故障 -45%），因此 F1 偏高。真实场景中窃电可能只让读数偏低 5%~10%，需要更细的特征（台区线损、分钟级电流、同表历史同期）与现场核查。教程会明确标注这些差异，避免你面试时把仿真结论当成真实世界的普遍规律。</p>
+        </div>
+        <div class="callout field">
+          <b class="t">如何复现全部结果</b>
+          <p>环境：Python 3.10+，依赖 <code>pandas / numpy / scikit-learn / lightgbm / statsmodels / matplotlib / scipy / fastapi / uvicorn</code>。在每个项目目录按 README 的顺序运行即可，数据与图表都会重新生成。教程中展示的每个数字都来自这些脚本的输出。</p>
+        </div>
+
+        <div class="callout quote">
+          <p>“懂一些机器学习”不是优势，<strong>能把机器学习放进一条真实的能源数据链路里</strong>才是。接下来 8 周，我们只做这一件事。</p>
+        </div>
+
+        <p style="margin-top:26px"><a class="btn-ghost" style="text-decoration:none;padding:10px 18px;font-size:14px" href="01-role.html">从第 1 章开始 →</a></p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 数据与指标均可复现 · 建议使用 Chrome / Edge 阅读
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

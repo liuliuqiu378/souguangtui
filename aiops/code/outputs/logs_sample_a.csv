@@ -1,0 +1,401 @@
+﻿timestamp,service,level,message,trace_id
+2026-11-04 00:10:02.235065623,redis,ERROR,OOM command not allowed when used memory > maxmemory,007b22e50bfd
+2026-11-04 00:29:24.608808918,payment,WARN,payment gateway latency high cost=444ms,004f04133ff5
+2026-11-04 00:34:48.966146087,mysql,ERROR,"deadlock found, transaction rolled back",00cc80619d0e
+2026-11-04 01:11:19.362544151,mysql,INFO,connection established threads=979,003e5c229017
+2026-11-04 01:12:17.542738378,recommend,INFO,model inference batch=655,00533c3ed5f4
+2026-11-04 01:40:22.106177181,product,ERROR,mysql connection pool exhausted active=965,00d38efde181
+2026-11-04 01:54:56.422803007,mysql,ERROR,"deadlock found, transaction rolled back",0073d22ac038
+2026-11-04 02:51:35.590638824,order,ERROR,create order failed: inventory lock timeout order_id=T20261104001,0019f51d49a9
+2026-11-04 03:18:02.269680002,redis,ERROR,OOM command not allowed when used memory > maxmemory,00b715ec4afa
+2026-11-04 03:41:07.169816801,redis,WARN,memory usage high used=417MB,0022450525b6
+2026-11-04 04:23:12.872629798,product,INFO,query product list category=coupon size=120,006e6cae24d6
+2026-11-04 05:59:56.189013338,gateway,ERROR,upstream connect timeout service=gateway after 885ms,00e3ebdd7170
+2026-11-04 06:52:30.931328396,redis,INFO,background save completed keys=959,00b1198ae309
+2026-11-04 06:59:51.938014875,mysql,INFO,connection established threads=949,004efd10a526
+2026-11-04 07:05:03.394610862,inventory,WARN,stock below threshold sku=sku1024 remain=464,0026bd3923f5
+2026-11-04 07:24:57.558584501,mysql,ERROR,"deadlock found, transaction rolled back",005e24dcda6b
+2026-11-04 08:26:27.241085960,redis,WARN,memory usage high used=441MB,00989d621545
+2026-11-04 09:16:08.749970492,inventory,INFO,stock deduct sku=sku1024 qty=740,00275c99857e
+2026-11-04 09:29:03.384118865,search,ERROR,search timeout after 73ms,0053ab9f6e50
+2026-11-04 10:05:28.576043346,mysql,INFO,connection established threads=527,0041ee59d76b
+2026-11-04 10:39:13.583676516,payment,INFO,payment callback received trade_no=T20261105112,00e17da64c1d
+2026-11-04 10:40:21.041988335,redis,INFO,background save completed keys=832,00aae3277356
+2026-11-04 10:49:10.990783087,product,ERROR,mysql connection pool exhausted active=628,009a5afad5ca
+2026-11-04 11:20:14.824876124,redis,INFO,client connected addr=172.20.8.5,007896f94749
+2026-11-04 11:38:14.844334118,product,INFO,query product list category=sku1024 size=786,00346c79d5e3
+2026-11-04 12:08:46.264295975,inventory,INFO,stock query sku=iphone15 remain=872,00afe7b79686
+2026-11-04 12:25:44.380300360,recommend,ERROR,recommend timeout fallback to hot list,00e0c20d0e05
+2026-11-04 12:31:21.665340714,mysql,WARN,slow query cost=648ms rows=648,00e524a78403
+2026-11-04 12:33:07.682333804,redis,ERROR,OOM command not allowed when used memory > maxmemory,009bce563959
+2026-11-04 12:33:18.110450285,mysql,WARN,slow query cost=252ms rows=252,00d848f8d605
+2026-11-04 12:41:00.034580164,redis,INFO,client connected addr=10.12.3.44,00c27920e8f6
+2026-11-04 12:53:34.366716205,redis,INFO,background save completed keys=520,00d9529fd743
+2026-11-04 14:21:30.550948080,cart,ERROR,redis cluster slot moved retry=101,00476ce46ed7
+2026-11-04 14:29:58.670733636,mysql,ERROR,too many connections active=894 max=500,004f13d16925
+2026-11-04 14:32:58.834352845,mysql,WARN,slow query cost=93ms rows=93,0086b8b4f793
+2026-11-04 14:47:49.543622488,mysql,WARN,slow query cost=475ms rows=475,00dc96f7682d
+2026-11-04 14:50:30.025713056,gateway,ERROR,upstream connect timeout service=order after 272ms,0099cf719e77
+2026-11-04 14:55:29.056518136,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,006c98aa3248
+2026-11-04 15:17:26.310462791,mysql,ERROR,too many connections active=887 max=500,00e64a85b1a7
+2026-11-04 15:27:20.956763522,auth,ERROR,invalid signature from client=10.12.7.91,00208cf9c5b6
+2026-11-04 15:30:21.194994838,order,ERROR,duplicate submit detected order_id=T20261104001,00b202571ff8
+2026-11-04 15:32:11.985076463,redis,ERROR,OOM command not allowed when used memory > maxmemory,008630f72495
+2026-11-04 15:35:57.444587490,search,INFO,es scroll id=T20261104057 batch=706,00e87847e6c1
+2026-11-04 15:42:04.247290115,search,ERROR,search timeout after 85ms,008b1d25c7ef
+2026-11-04 16:39:13.941377005,product,INFO,query product list category=sku1024 size=790,008bf823dc9d
+2026-11-04 17:22:20.592384328,mysql,WARN,slow query cost=61ms rows=61,00a259a21d86
+2026-11-04 18:01:20.517246214,gateway,INFO,GET /api/v1/search status=200 cost=102ms,0049a78c33c1
+2026-11-04 18:36:26.895971150,mysql,ERROR,too many connections active=135 max=500,00743848d409
+2026-11-04 18:53:50.732195381,mysql,ERROR,too many connections active=34 max=500,0024a3228a0d
+2026-11-04 19:13:01.448355266,inventory,ERROR,inventory service health check failed,00be2900e55d
+2026-11-04 19:27:26.841794196,auth,ERROR,redis command timeout key=auth:u20914 cost=374ms,00925a8d6099
+2026-11-04 19:29:05.449527856,mysql,ERROR,"deadlock found, transaction rolled back",0056b61146f4
+2026-11-04 19:32:06.452081744,mysql,WARN,slow query cost=789ms rows=789,005f455369db
+2026-11-04 21:12:42.762525494,mysql,ERROR,too many connections active=467 max=500,006fe2a522f2
+2026-11-04 21:18:14.380782098,redis,INFO,client connected addr=10.12.7.91,00d49c549f68
+2026-11-04 21:29:05.767448863,redis,INFO,client connected addr=172.20.8.5,0033e1dd5119
+2026-11-04 22:03:45.802548252,redis,INFO,client connected addr=10.12.3.44,00493744011f
+2026-11-04 23:11:36.331521084,cart,ERROR,"cart service unavailable, fallback to local cache",008e77cad31c
+2026-11-05 00:31:14.992410360,mysql,INFO,connection established threads=519,00575570c78e
+2026-11-05 00:40:41.561111624,notification,ERROR,sms gateway timeout code=917,00d1479004b1
+2026-11-05 02:05:06.142398423,search,ERROR,"es cluster red, shard unassigned index=products",005ccf77351b
+2026-11-05 03:20:13.363921045,auth,ERROR,invalid signature from client=10.12.7.91,00512891b187
+2026-11-05 03:53:54.873600784,redis,ERROR,OOM command not allowed when used memory > maxmemory,00a16dcdee4c
+2026-11-05 04:31:49.966995204,auth,INFO,user login uid=u5561 channel=cart,00b2a131e1a3
+2026-11-05 05:25:49.811939957,gateway,INFO,GET /api/v1/coupon status=200 cost=941ms,005946b12699
+2026-11-05 05:49:11.122144105,mysql,ERROR,too many connections active=718 max=500,005a8b7c1bd8
+2026-11-05 06:15:27.567510161,auth,INFO,user login uid=u77402 channel=premium,0093e2f68c11
+2026-11-05 06:25:48.590031817,order,INFO,order created order_id=T20261105190 amount=68,00861e4dd7fc
+2026-11-05 06:31:24.307061394,redis,ERROR,OOM command not allowed when used memory > maxmemory,002d4a35ab9b
+2026-11-05 07:43:36.773692491,gateway,WARN,upstream response slow service=product cost=194ms,00e20510d24b
+2026-11-05 08:08:01.183112491,auth,INFO,token validated user=u88213 cost=610ms,00ac3bd6e649
+2026-11-05 08:11:31.924185464,gateway,ERROR,no healthy upstream for service=cart,006595564c15
+2026-11-05 08:31:45.134432705,redis,INFO,client connected addr=172.20.8.5,0021020ca703
+2026-11-05 09:48:05.791302035,redis,WARN,memory usage high used=570MB,004c34541208
+2026-11-05 09:55:29.428858270,redis,INFO,background save completed keys=911,00b969a7172f
+2026-11-05 09:57:37.896257099,payment,ERROR,payment failed trade_no=T20261105112 code=E668,00a863ddf21d
+2026-11-05 10:08:55.818250552,mysql,ERROR,"deadlock found, transaction rolled back",00e3dea68461
+2026-11-05 10:35:38.491179978,product,WARN,slow query detected sql=select_product cost=93ms,00ab32e3d6b1
+2026-11-05 12:12:34.813634380,mysql,INFO,slow query log disabled,002bc2d5e7cc
+2026-11-05 12:42:32.722941559,redis,ERROR,OOM command not allowed when used memory > maxmemory,00742a8471fc
+2026-11-05 12:46:46.371093951,mysql,ERROR,too many connections active=595 max=500,00ca13732f8c
+2026-11-05 13:41:57.908293334,mysql,INFO,slow query log disabled,00c0adfbcfef
+2026-11-05 14:13:15.027028922,gateway,ERROR,no healthy upstream for service=search,0087c2e4f5ae
+2026-11-05 14:19:05.776249568,mysql,INFO,slow query log disabled,006235f73360
+2026-11-05 14:26:10.428439002,gateway,ERROR,no healthy upstream for service=auth,009c1048b21e
+2026-11-05 14:26:23.158354739,auth,INFO,user login uid=u20914 channel=coupon,0024d5e33793
+2026-11-05 14:43:55.018420270,product,WARN,slow query detected sql=select_product cost=29ms,00c71f0498a2
+2026-11-05 14:49:47.624515300,product,INFO,query product list category=search size=262,002f5727e673
+2026-11-05 15:40:15.060972340,gateway,WARN,upstream response slow service=order cost=775ms,001d2f4cd62e
+2026-11-05 16:06:10.616675648,redis,ERROR,OOM command not allowed when used memory > maxmemory,0083b58f5ae1
+2026-11-05 18:05:52.163415665,redis,ERROR,OOM command not allowed when used memory > maxmemory,00408c6b0b2c
+2026-11-05 18:11:38.264613118,redis,ERROR,OOM command not allowed when used memory > maxmemory,00dfa32c111a
+2026-11-05 18:24:24.661340946,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,002b95aaaf42
+2026-11-05 18:32:42.510741793,payment,INFO,payment callback received trade_no=T20261105112,00a3b504f361
+2026-11-05 18:33:37.079491538,mysql,WARN,slow query cost=801ms rows=801,008125049362
+2026-11-05 18:48:41.241902296,redis,ERROR,OOM command not allowed when used memory > maxmemory,00984b9f6e8e
+2026-11-05 19:15:50.382629843,redis,INFO,client connected addr=10.12.3.44,0088d81fbd27
+2026-11-05 20:33:50.664995871,cart,WARN,cart item expired sku=order,00c8866638bb
+2026-11-05 20:56:37.360114286,gateway,ERROR,no healthy upstream for service=auth,005fb517fa3b
+2026-11-05 20:59:07.332600304,payment,ERROR,payment failed trade_no=T20261105190 code=E519,0036143bfef0
+2026-11-05 21:41:05.021485241,mysql,WARN,slow query cost=634ms rows=634,0036a0daaa51
+2026-11-05 21:59:55.640974665,mysql,INFO,connection established threads=922,00c6a1fef295
+2026-11-05 22:10:39.168149337,redis,INFO,background save completed keys=541,008348a9a347
+2026-11-05 23:31:43.586003989,product,WARN,slow query detected sql=select_product cost=323ms,006435e57ef9
+2026-11-05 23:44:23.771495546,auth,INFO,token validated user=u77402 cost=661ms,00696f506344
+2026-11-05 23:50:40.489044200,product,WARN,slow query detected sql=select_product cost=19ms,00d92fa8d98a
+2026-11-05 23:58:34.409546806,mysql,INFO,slow query log disabled,00d9eb6e7ab8
+2026-11-06 00:06:47.723357021,mysql,ERROR,"deadlock found, transaction rolled back",00e7a3e010ef
+2026-11-06 00:38:33.050269870,mysql,ERROR,"deadlock found, transaction rolled back",00c68619b27d
+2026-11-06 01:24:48.519888571,product,ERROR,OOM killed worker pid=978,00b0b1ca210d
+2026-11-06 01:53:02.920122232,product,ERROR,mysql connection pool exhausted active=769,0061590b0cc7
+2026-11-06 02:22:25.442371982,mysql,INFO,slow query log disabled,00de3546ccff
+2026-11-06 02:54:40.987217349,inventory,INFO,stock deduct sku=cart qty=44,00b1fb34739a
+2026-11-06 03:01:07.243851260,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00d731f46073
+2026-11-06 03:14:35.055275790,mysql,INFO,connection established threads=123,006cc842439b
+2026-11-06 03:22:59.486871299,mysql,INFO,slow query log disabled,00575fce06d1
+2026-11-06 03:32:55.353500590,redis,INFO,background save completed keys=753,007e27b28fe6
+2026-11-06 04:27:52.090675216,redis,INFO,background save completed keys=532,0035763418d3
+2026-11-06 04:32:44.314972707,redis,INFO,background save completed keys=565,00affed0bbfd
+2026-11-06 04:41:32.081570151,cart,ERROR,"cart service unavailable, fallback to local cache",00a6733fa7e5
+2026-11-06 06:27:55.139500035,redis,INFO,background save completed keys=906,00307e012e3b
+2026-11-06 08:32:40.607152781,gateway,INFO,POST /api/v1/v2 status=201 cost=47ms,00e2b5287542
+2026-11-06 09:13:13.834511238,redis,ERROR,OOM command not allowed when used memory > maxmemory,00b692c1785c
+2026-11-06 09:34:18.191255019,inventory,INFO,stock deduct sku=coupon qty=822,00aff9247231
+2026-11-06 10:22:22.653673200,redis,INFO,client connected addr=172.20.8.5,0069ac3c4da4
+2026-11-06 10:38:22.451386054,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00d2d94a5855
+2026-11-06 10:50:02.390487811,mysql,WARN,slow query cost=496ms rows=496,0052485a3ea0
+2026-11-06 11:45:16.960493741,redis,WARN,memory usage high used=942MB,00dc47bdbe13
+2026-11-06 12:12:13.185994145,redis,INFO,background save completed keys=900,00bcb8a69876
+2026-11-06 12:39:52.489017160,redis,ERROR,OOM command not allowed when used memory > maxmemory,0037448dd817
+2026-11-06 13:49:37.041674032,mysql,WARN,slow query cost=715ms rows=715,00a62acf96de
+2026-11-06 14:51:51.939865458,redis,INFO,client connected addr=10.12.7.91,008a8277f764
+2026-11-06 14:54:34.978783190,mysql,ERROR,"deadlock found, transaction rolled back",008607848bf1
+2026-11-06 14:55:37.097655682,gateway,WARN,upstream response slow service=cart cost=159ms,008e0c9151fb
+2026-11-06 15:26:07.096768199,product,INFO,query product list category=iphone15 size=352,009e085d2f83
+2026-11-06 15:47:01.214006146,mysql,INFO,connection established threads=78,00ba8110f4ec
+2026-11-06 15:58:39.978064035,mysql,ERROR,"deadlock found, transaction rolled back",0037e8a94497
+2026-11-06 16:55:35.200245595,inventory,WARN,stock below threshold sku=sku1024 remain=897,00d83fc3fb62
+2026-11-06 17:12:10.446431762,product,INFO,query product list category=cart size=213,005cf97988b9
+2026-11-06 17:44:21.370432635,mysql,INFO,slow query log disabled,00b0517d3bcb
+2026-11-06 18:39:13.855318901,gateway,INFO,POST /api/v1/v2 status=201 cost=325ms,0090a005e9a1
+2026-11-06 19:05:47.160192572,product,INFO,cache hit ratio=0.801,001ee3a8c6ed
+2026-11-06 19:14:05.414087670,redis,WARN,memory usage high used=539MB,009230d60062
+2026-11-06 19:35:20.139959446,auth,INFO,token validated user=u20914 cost=345ms,0078b24a359c
+2026-11-06 19:37:42.784801627,redis,ERROR,OOM command not allowed when used memory > maxmemory,0059c124ffea
+2026-11-06 19:42:30.968298477,redis,INFO,client connected addr=172.20.8.5,0081e6bf4fcf
+2026-11-06 20:05:42.129464697,gateway,INFO,POST /api/v1/premium status=201 cost=247ms,00654f97d2f7
+2026-11-06 20:18:51.474735586,auth,ERROR,invalid signature from client=172.20.8.5,00602b18e241
+2026-11-06 20:22:20.875304942,product,INFO,cache hit ratio=0.401,00883e34be8e
+2026-11-06 21:12:10.166025793,gateway,ERROR,no healthy upstream for service=gateway,0087b2fe25f3
+2026-11-06 21:20:49.394484698,product,INFO,cache hit ratio=0.521,00367987b715
+2026-11-06 22:29:06.455497261,recommend,INFO,recommend list uid=u5561 size=387 cost=387ms,001cb83fd7f1
+2026-11-06 22:46:05.765038228,auth,ERROR,redis command timeout key=auth:u77402 cost=264ms,00a3cca76a85
+2026-11-06 22:54:17.814791264,gateway,ERROR,upstream connect timeout service=payment after 260ms,00ce90870e3a
+2026-11-06 23:36:48.263274113,auth,WARN,token refresh failed retry=31,0085c5e190b7
+2026-11-07 00:19:24.517803379,product,INFO,cache hit ratio=0.230,00b56b5df90f
+2026-11-07 00:29:49.786574466,search,ERROR,search timeout after 352ms,007321e2d21d
+2026-11-07 00:31:54.229233940,mysql,ERROR,too many connections active=204 max=500,00a8560b661a
+2026-11-07 00:43:12.338585594,gateway,ERROR,no healthy upstream for service=inventory,001dd25ade48
+2026-11-07 01:14:18.251252625,product,INFO,cache hit ratio=0.242,00635bb2f856
+2026-11-07 01:45:57.887683447,gateway,ERROR,no healthy upstream for service=payment,002f00b995ee
+2026-11-07 02:17:40.256406555,mysql,INFO,slow query log disabled,006ff1dff4a6
+2026-11-07 02:25:19.319331810,product,ERROR,OOM killed worker pid=393,004ae2078614
+2026-11-07 02:31:06.413945537,redis,INFO,client connected addr=10.12.7.91,003bf2529a5c
+2026-11-07 02:44:30.638009135,redis,WARN,memory usage high used=203MB,00a22069d43c
+2026-11-07 02:51:49.252458392,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00a4c907cab3
+2026-11-07 03:06:42.004307233,mysql,ERROR,"deadlock found, transaction rolled back",008791c0e46a
+2026-11-07 03:13:21.367339728,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00d2eb379d32
+2026-11-07 03:23:47.369890788,mysql,INFO,slow query log disabled,00c65560a9d7
+2026-11-07 03:26:44.423367702,mysql,ERROR,"deadlock found, transaction rolled back",006a95766e71
+2026-11-07 03:27:23.697663612,product,INFO,cache hit ratio=0.938,00ad3a416399
+2026-11-07 03:28:43.932452145,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,009b08e90fb2
+2026-11-07 03:35:27.452931836,mysql,INFO,connection established threads=437,002a160264da
+2026-11-07 03:49:24.770971368,mysql,WARN,slow query cost=338ms rows=338,007011991334
+2026-11-07 04:00:55.895767053,product,WARN,slow query detected sql=select_product cost=215ms,009111c4879f
+2026-11-07 04:22:38.235362002,gateway,ERROR,no healthy upstream for service=redis,00c717b2a5dc
+2026-11-07 04:36:56.078611685,mysql,INFO,slow query log disabled,0084ea7b3e60
+2026-11-07 04:48:47.787464246,recommend,WARN,feature cache miss ratio=0.391,007abb692a1e
+2026-11-07 05:21:43.607666523,gateway,ERROR,no healthy upstream for service=notification,003d3cd7c514
+2026-11-07 06:25:41.737910351,order,ERROR,create order failed: inventory lock timeout order_id=T20261104001,00ccee4145dd
+2026-11-07 06:39:41.049608869,redis,INFO,background save completed keys=183,008bb397792c
+2026-11-07 06:39:47.388538176,mysql,ERROR,"deadlock found, transaction rolled back",0028281ea3ac
+2026-11-07 07:14:16.002041916,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,005888cdfb35
+2026-11-07 08:02:44.110799560,mysql,ERROR,"deadlock found, transaction rolled back",00b522542dba
+2026-11-07 08:44:34.072955268,recommend,INFO,recommend list uid=u77402 size=951 cost=951ms,0050cb3d39a6
+2026-11-07 09:31:39.782060337,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,001a696621dd
+2026-11-07 09:42:38.321155748,redis,INFO,client connected addr=10.12.3.44,004f6c315317
+2026-11-07 10:12:24.052525961,mysql,WARN,slow query cost=209ms rows=209,00195cb1d703
+2026-11-07 10:27:46.904395050,redis,ERROR,OOM command not allowed when used memory > maxmemory,0036b932f1a5
+2026-11-07 11:40:57.777814202,inventory,INFO,stock query sku=search remain=34,00e453702bd3
+2026-11-07 11:46:33.921238194,redis,INFO,background save completed keys=271,006ebdda6aa3
+2026-11-07 11:55:45.502907505,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00c981c8469b
+2026-11-07 11:56:11.276070462,recommend,ERROR,"model server OOM, reloading model",00ce44b86502
+2026-11-07 12:01:17.378301321,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,005be1e1c5f1
+2026-11-07 12:25:39.716577315,redis,ERROR,OOM command not allowed when used memory > maxmemory,00677087ef3a
+2026-11-07 12:32:39.387404417,gateway,INFO,GET /api/v1/coupon status=200 cost=260ms,007c2bb49562
+2026-11-07 12:34:01.336629448,redis,ERROR,OOM command not allowed when used memory > maxmemory,0066a5fb9225
+2026-11-07 12:48:44.486304378,redis,INFO,client connected addr=10.12.7.91,0022bf1e65df
+2026-11-07 14:01:38.713489639,payment,ERROR,payment failed trade_no=T20261104057 code=E451,00adb00b7b2b
+2026-11-07 14:28:42.941086814,redis,INFO,background save completed keys=627,007518b70dd9
+2026-11-07 14:55:53.929494921,gateway,WARN,upstream response slow service=redis cost=450ms,0037689b5746
+2026-11-07 15:20:30.520097483,gateway,ERROR,upstream connect timeout service=payment after 352ms,00386821ac26
+2026-11-07 15:46:20.080704511,gateway,INFO,GET /api/v1/iphone15 status=200 cost=569ms,00cdc583071c
+2026-11-07 16:27:35.138004144,cart,ERROR,"cart service unavailable, fallback to local cache",00304cc92caa
+2026-11-07 16:34:14.604349710,gateway,WARN,upstream response slow service=search cost=624ms,004a545837d3
+2026-11-07 16:59:51.488233324,auth,WARN,token refresh failed retry=809,005002ea8fb2
+2026-11-07 17:09:35.402748356,gateway,WARN,upstream response slow service=cart cost=413ms,0067a02b037c
+2026-11-07 18:03:46.888560978,redis,INFO,background save completed keys=827,008d6a8262f7
+2026-11-07 18:23:58.862618395,mysql,ERROR,too many connections active=977 max=500,00620e313784
+2026-11-07 18:38:13.315378412,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00397460885b
+2026-11-07 18:39:55.855928992,cart,WARN,cart item expired sku=v2,007d0191dc25
+2026-11-07 18:57:55.959188242,redis,ERROR,OOM command not allowed when used memory > maxmemory,00847b51441a
+2026-11-07 19:10:14.228568870,gateway,INFO,POST /api/v1/coupon status=201 cost=535ms,005bac60d7bc
+2026-11-07 20:08:03.488595611,mysql,WARN,slow query cost=114ms rows=114,007e3b0b60ef
+2026-11-07 20:11:23.101531401,gateway,WARN,upstream response slow service=mysql cost=787ms,0044cf87ca6a
+2026-11-07 20:30:37.957265395,gateway,INFO,POST /api/v1/premium status=201 cost=606ms,005bb0050188
+2026-11-07 20:48:25.159741570,redis,INFO,client connected addr=172.20.8.5,002f2706fee0
+2026-11-07 20:52:50.282063971,mysql,ERROR,too many connections active=83 max=500,007f41a865f7
+2026-11-07 21:55:45.349906293,search,INFO,es scroll id=T20261105112 batch=165,0017eae3ddcb
+2026-11-07 21:59:44.209182063,redis,INFO,client connected addr=10.12.3.44,005d8eb14ee9
+2026-11-07 22:00:28.971030728,redis,WARN,memory usage high used=404MB,00c645241860
+2026-11-07 22:29:35.714701807,mysql,ERROR,"deadlock found, transaction rolled back",0099e96ebd77
+2026-11-07 22:29:46.812681732,recommend,ERROR,recommend timeout fallback to hot list,00842e54fd52
+2026-11-07 22:38:52.190482270,redis,INFO,client connected addr=10.12.7.91,0052610a1abf
+2026-11-07 22:53:27.957964357,redis,WARN,memory usage high used=271MB,00b24a4dfa80
+2026-11-07 22:56:23.576772309,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00beb430d82b
+2026-11-07 23:03:05.375606770,gateway,WARN,upstream response slow service=order cost=381ms,00c955b7a6d8
+2026-11-07 23:46:50.427582369,gateway,WARN,upstream response slow service=notification cost=592ms,0052bdc4aeac
+2026-11-08 00:28:03.999730678,cart,ERROR,"cart service unavailable, fallback to local cache",0067202a9314
+2026-11-08 00:40:14.813705940,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,007387d3b93c
+2026-11-08 01:29:42.710620680,auth,INFO,token validated user=u5561 cost=81ms,00a5cd0112aa
+2026-11-08 01:45:53.658474479,mysql,WARN,slow query cost=329ms rows=329,0067643defd4
+2026-11-08 01:52:45.892309205,mysql,ERROR,"deadlock found, transaction rolled back",002e29016c15
+2026-11-08 02:02:20.035312009,mysql,WARN,slow query cost=137ms rows=137,003c9d266113
+2026-11-08 02:15:32.094161125,cart,WARN,cart item expired sku=premium,006c82fdb7fa
+2026-11-08 02:17:22.315150618,auth,INFO,token validated user=u77402 cost=107ms,003424267041
+2026-11-08 03:14:55.161288543,gateway,INFO,POST /api/v1/cart status=201 cost=387ms,00e2852cb053
+2026-11-08 03:30:46.385697695,gateway,WARN,upstream response slow service=order cost=171ms,00dede2b6ba3
+2026-11-08 03:34:50.365713203,inventory,ERROR,inventory service health check failed,0077027e619d
+2026-11-08 03:51:11.885623545,redis,ERROR,OOM command not allowed when used memory > maxmemory,00bf17fc276e
+2026-11-08 03:56:59.045765681,redis,WARN,memory usage high used=479MB,00b98e04018e
+2026-11-08 03:58:59.512358097,product,ERROR,mysql connection pool exhausted active=755,009a787019d4
+2026-11-08 04:37:38.555468825,redis,WARN,memory usage high used=27MB,0018c81a881d
+2026-11-08 04:55:09.466139173,mysql,WARN,slow query cost=273ms rows=273,003a43955d94
+2026-11-08 05:28:40.904301768,gateway,ERROR,no healthy upstream for service=search,00b7fd8448d9
+2026-11-08 05:59:17.045831510,product,INFO,query product list category=v2 size=101,0092255ce22c
+2026-11-08 06:19:53.883809955,mysql,INFO,slow query log disabled,00191ea89412
+2026-11-08 06:48:37.623173697,redis,ERROR,OOM command not allowed when used memory > maxmemory,00e1599a3de6
+2026-11-08 06:50:18.383597714,redis,WARN,memory usage high used=965MB,00c8ddc69f83
+2026-11-08 07:03:38.060222338,auth,ERROR,redis command timeout key=auth:u20914 cost=252ms,00a03564012f
+2026-11-08 07:23:03.467017748,redis,ERROR,OOM command not allowed when used memory > maxmemory,00854ad8bc64
+2026-11-08 07:33:12.658345994,mysql,ERROR,too many connections active=657 max=500,00ac8e9d3a8e
+2026-11-08 07:53:26.370345257,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00a47ebf78ab
+2026-11-08 08:49:56.055605309,product,INFO,cache hit ratio=0.806,00aba85f0db8
+2026-11-08 09:00:03.326472930,recommend,WARN,feature cache miss ratio=0.958,00a2f48496fa
+2026-11-08 09:10:58.688488080,redis,INFO,background save completed keys=621,00904a120d88
+2026-11-08 09:21:54.430798485,mysql,INFO,slow query log disabled,00652adea028
+2026-11-08 09:25:43.089261114,redis,ERROR,OOM command not allowed when used memory > maxmemory,003eff11d344
+2026-11-08 09:26:03.055390483,search,INFO,search query=sku1024 hits=386 cost=386ms,004c9100649b
+2026-11-08 09:48:51.823859005,mysql,ERROR,"deadlock found, transaction rolled back",003438d8b199
+2026-11-08 10:11:53.552795570,order,INFO,order confirmed order_id=T20261105112 cost=351ms,0044841049aa
+2026-11-08 10:32:11.788697799,inventory,WARN,stock below threshold sku=premium remain=703,0020f3affe81
+2026-11-08 10:47:03.016679706,auth,INFO,user login uid=u10293 channel=cart,00b15c4da6b3
+2026-11-08 10:53:31.232348158,redis,WARN,memory usage high used=621MB,00a5ba2f78ab
+2026-11-08 10:57:58.653600298,redis,INFO,background save completed keys=632,00653c6e658e
+2026-11-08 11:07:51.760677586,product,ERROR,OOM killed worker pid=132,00d88cd21f70
+2026-11-08 11:08:56.352131622,redis,ERROR,OOM command not allowed when used memory > maxmemory,00c64508dc14
+2026-11-08 11:15:18.621199440,redis,ERROR,OOM command not allowed when used memory > maxmemory,0077df037b33
+2026-11-08 11:18:01.631802477,gateway,WARN,upstream response slow service=inventory cost=699ms,00caff108b08
+2026-11-08 11:30:57.378980983,gateway,ERROR,no healthy upstream for service=search,00dfe46a625b
+2026-11-08 11:36:52.303770088,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,0050b8b90577
+2026-11-08 11:54:29.936029036,redis,WARN,memory usage high used=887MB,00c5de477762
+2026-11-08 12:16:11.814385280,redis,WARN,memory usage high used=945MB,00a45406f39e
+2026-11-08 12:30:01.014567509,redis,INFO,background save completed keys=77,0074e4390fec
+2026-11-08 12:40:32.149454244,product,ERROR,mysql connection pool exhausted active=307,00dea8177b88
+2026-11-08 12:53:01.439427504,redis,INFO,client connected addr=10.12.7.91,0061c2d32bc7
+2026-11-08 13:29:03.941783565,inventory,ERROR,stock lock conflict sku=iphone15 retry=17,00884e6faf41
+2026-11-08 13:41:17.952914040,redis,ERROR,OOM command not allowed when used memory > maxmemory,00b5de466207
+2026-11-08 13:55:55.526415295,mysql,ERROR,"deadlock found, transaction rolled back",0038841a704b
+2026-11-08 15:07:16.898401260,mysql,INFO,connection established threads=485,004f13a6a541
+2026-11-08 15:25:05.781318765,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,0029705b4d83
+2026-11-08 15:28:39.912284301,product,WARN,slow query detected sql=select_product cost=821ms,0066c7c14726
+2026-11-08 15:58:24.005800047,gateway,ERROR,upstream connect timeout service=product after 764ms,00665219c041
+2026-11-08 16:02:00.485391639,gateway,WARN,upstream response slow service=inventory cost=677ms,0048d8372659
+2026-11-08 16:26:30.106743934,redis,ERROR,OOM command not allowed when used memory > maxmemory,002164269c17
+2026-11-08 16:32:32.937579754,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,0090b57be995
+2026-11-08 16:43:35.669042671,redis,ERROR,OOM command not allowed when used memory > maxmemory,00db250c5b55
+2026-11-08 17:19:59.366970304,product,ERROR,OOM killed worker pid=611,0052bf48c57e
+2026-11-08 17:34:29.921599572,mysql,WARN,slow query cost=230ms rows=230,00a82ee94229
+2026-11-08 17:41:49.850227261,search,WARN,es query slow cost=122ms index=products,0029ef06d158
+2026-11-08 18:21:44.844696734,auth,ERROR,invalid signature from client=172.20.8.5,00336ae67f03
+2026-11-08 18:29:12.515466462,redis,WARN,memory usage high used=33MB,008a6f31fd39
+2026-11-08 19:05:46.395344051,redis,ERROR,OOM command not allowed when used memory > maxmemory,003bd67bbbc5
+2026-11-08 19:22:27.408086509,recommend,INFO,recommend list uid=u10293 size=144 cost=144ms,00d9116e7dda
+2026-11-08 19:51:26.415970434,redis,INFO,client connected addr=10.12.7.91,00ce08a5ba54
+2026-11-08 20:17:31.758551117,redis,WARN,memory usage high used=374MB,00d4953eb77d
+2026-11-08 21:09:51.304698386,gateway,ERROR,upstream connect timeout service=gateway after 9ms,00642ca788fb
+2026-11-08 21:20:08.620640820,redis,WARN,memory usage high used=448MB,00d1ea8ec6bc
+2026-11-08 21:56:34.160660307,gateway,INFO,GET /api/v1/iphone15 status=200 cost=740ms,003f1a99d634
+2026-11-08 22:19:51.206701612,redis,WARN,memory usage high used=335MB,009390107a9d
+2026-11-08 23:05:09.934304813,gateway,WARN,upstream response slow service=recommend cost=744ms,00dbbb256013
+2026-11-08 23:22:19.291236059,search,ERROR,search timeout after 734ms,00c006687e70
+2026-11-08 23:23:13.250339304,mysql,INFO,slow query log disabled,003e0befc17d
+2026-11-08 23:23:54.967700550,order,ERROR,duplicate submit detected order_id=T20261105112,00c15184b775
+2026-11-08 23:47:48.927240273,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,0094c69fd9e3
+2026-11-08 23:48:35.784999622,inventory,INFO,stock query sku=sku1024 remain=510,0063c2441c4e
+2026-11-09 00:07:16.673739986,product,WARN,slow query detected sql=select_product cost=211ms,004275d0af5f
+2026-11-09 00:40:11.795169502,redis,INFO,background save completed keys=855,00477ef2ec7f
+2026-11-09 01:47:12.599796848,search,ERROR,"es cluster red, shard unassigned index=products",0093fd6686a2
+2026-11-09 02:45:20.415558904,cart,INFO,cart merged uid=u77402 items=960,00c016646884
+2026-11-09 02:52:26.044715804,redis,ERROR,OOM command not allowed when used memory > maxmemory,007be1c67319
+2026-11-09 03:19:14.075660258,gateway,ERROR,no healthy upstream for service=payment,00d5df21279f
+2026-11-09 03:23:43.259174694,mysql,INFO,connection established threads=192,00a7470224b4
+2026-11-09 03:34:31.337892169,search,ERROR,"es cluster red, shard unassigned index=products",0084e665b7ec
+2026-11-09 03:52:12.728351881,redis,INFO,background save completed keys=379,0032e32c0c51
+2026-11-09 04:14:29.839550830,redis,WARN,memory usage high used=974MB,003ab2c74b40
+2026-11-09 04:23:59.640594122,redis,INFO,background save completed keys=909,008a1a25bd44
+2026-11-09 04:57:48.737311383,product,INFO,query product list category=iphone15 size=619,0066e65a0834
+2026-11-09 06:17:11.493537666,gateway,INFO,GET /api/v1/order status=200 cost=132ms,00e46bbef18d
+2026-11-09 06:22:00.367579992,mysql,ERROR,too many connections active=93 max=500,00c4ab9f9067
+2026-11-09 06:49:00.267040573,mysql,INFO,slow query log disabled,00a4bfb28323
+2026-11-09 08:04:34.031337567,mysql,INFO,connection established threads=273,001f4da90ccb
+2026-11-09 08:53:13.445524581,auth,ERROR,redis command timeout key=auth:u10293 cost=663ms,00656ed0eb93
+2026-11-09 09:57:40.472373284,inventory,INFO,stock query sku=coupon remain=267,00aea70091ee
+2026-11-09 10:28:05.488827424,redis,WARN,memory usage high used=606MB,0064e7331ca5
+2026-11-09 11:08:39.607990136,redis,INFO,client connected addr=10.12.7.91,0036068229e9
+2026-11-09 11:42:01.935862351,mysql,ERROR,too many connections active=176 max=500,0098836b967e
+2026-11-09 11:43:16.866423081,gateway,INFO,GET /api/v1/coupon status=200 cost=146ms,008c64c6e301
+2026-11-09 11:46:21.417989685,mysql,ERROR,too many connections active=210 max=500,0042ac8803b7
+2026-11-09 12:45:21.295835207,gateway,INFO,GET /api/v1/sku1024 status=200 cost=708ms,0037ae3b410b
+2026-11-09 13:46:49.204314987,gateway,INFO,GET /api/v1/search status=200 cost=360ms,0049e63e463c
+2026-11-09 14:10:06.823772525,mysql,WARN,slow query cost=837ms rows=837,00402a6c96e2
+2026-11-09 14:45:49.950839486,redis,ERROR,OOM command not allowed when used memory > maxmemory,00936a042a1c
+2026-11-09 14:48:38.584052507,cart,INFO,cart merged uid=u5561 items=904,0086181972d3
+2026-11-09 14:52:41.377768422,search,WARN,es query slow cost=617ms index=products,00c62592712e
+2026-11-09 15:56:41.086558753,inventory,WARN,stock below threshold sku=cart remain=959,00a8c27e3592
+2026-11-09 16:52:42.523529288,redis,WARN,memory usage high used=364MB,00c0b0803d94
+2026-11-09 17:58:13.007817883,product,ERROR,OOM killed worker pid=152,00bb082161b7
+2026-11-09 17:59:32.753253386,gateway,WARN,upstream response slow service=auth cost=310ms,005521e09297
+2026-11-09 18:10:06.214814454,gateway,WARN,upstream response slow service=inventory cost=42ms,00bb23342f06
+2026-11-09 18:10:25.710521203,mysql,WARN,slow query cost=334ms rows=334,00279f2a323e
+2026-11-09 18:47:20.101234533,mysql,WARN,slow query cost=302ms rows=302,00b7a192887e
+2026-11-09 18:57:27.321766755,mysql,INFO,connection established threads=695,0044582a0f8e
+2026-11-09 19:39:27.477998527,mysql,ERROR,"deadlock found, transaction rolled back",0094392b4bd0
+2026-11-09 20:03:30.682635832,mysql,ERROR,too many connections active=429 max=500,002668b6753f
+2026-11-09 20:12:28.665283027,payment,INFO,payment success trade_no=T20261104001 channel=iphone15,005a33540ca6
+2026-11-09 21:03:16.432693855,redis,INFO,client connected addr=10.12.7.91,007819405c29
+2026-11-09 22:25:24.477730418,redis,ERROR,OOM command not allowed when used memory > maxmemory,00b8e0a2036b
+2026-11-09 23:17:09.854282700,mysql,INFO,slow query log disabled,0019ddf96dac
+2026-11-09 23:41:31.594207839,mysql,ERROR,"deadlock found, transaction rolled back",0090b4ffd6dd
+2026-11-10 00:10:44.574148507,cart,ERROR,"cart service unavailable, fallback to local cache",0053f078c221
+2026-11-10 00:23:11.026223969,mysql,INFO,connection established threads=909,005ad3b863aa
+2026-11-10 01:18:38.326011156,mysql,ERROR,"deadlock found, transaction rolled back",00a2bad5de29
+2026-11-10 02:07:02.305427804,mysql,WARN,slow query cost=16ms rows=16,00709df5c9c1
+2026-11-10 02:09:36.551622121,mysql,ERROR,"deadlock found, transaction rolled back",007c280f3f4a
+2026-11-10 02:14:19.404040451,product,INFO,cache hit ratio=0.134,003f2a565921
+2026-11-10 02:44:36.510268319,auth,INFO,token validated user=u88213 cost=962ms,00520c1b2f55
+2026-11-10 02:47:16.427941118,redis,WARN,memory usage high used=728MB,008b4adc118b
+2026-11-10 03:19:18.433173296,mysql,WARN,slow query cost=915ms rows=915,009cea73e607
+2026-11-10 03:28:09.765545462,mysql,INFO,slow query log disabled,00359d6846c7
+2026-11-10 04:09:25.779900700,mysql,ERROR,too many connections active=598 max=500,00a5750e39ab
+2026-11-10 04:53:30.460470674,mysql,WARN,slow query cost=317ms rows=317,008404eb3e29
+2026-11-10 05:10:18.113484522,cart,ERROR,redis cluster slot moved retry=863,004c5604fd0b
+2026-11-10 06:07:52.869764650,mysql,INFO,connection established threads=812,00c6308d0346
+2026-11-10 06:12:20.768647230,redis,ERROR,OOM command not allowed when used memory > maxmemory,00de44e2185f
+2026-11-10 06:14:12.241140715,mysql,ERROR,too many connections active=901 max=500,00c7e754c906
+2026-11-10 08:16:16.642587017,mysql,INFO,connection established threads=402,008380a21410
+2026-11-10 08:51:02.393742980,product,ERROR,OOM killed worker pid=440,002464576594
+2026-11-10 08:58:00.173580656,redis,WARN,memory usage high used=362MB,005f5b5a5feb
+2026-11-10 09:08:31.691348071,gateway,INFO,POST /api/v1/premium status=201 cost=662ms,007dce4c8907
+2026-11-10 10:43:16.226149033,order,INFO,order confirmed order_id=T20261104001 cost=812ms,009db7af72ff
+2026-11-10 10:51:27.059858200,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00c1780dbd88
+2026-11-10 11:25:58.105163668,product,ERROR,OOM killed worker pid=675,006745676b7f
+2026-11-10 11:33:44.672612483,search,ERROR,search timeout after 54ms,00df73216339
+2026-11-10 12:41:42.819929532,mysql,WARN,slow query cost=321ms rows=321,00dc8af7a9be
+2026-11-10 12:49:03.895459039,mysql,INFO,slow query log disabled,00a14a3d2908
+2026-11-10 12:51:58.937303521,mysql,WARN,slow query cost=346ms rows=346,00a27e5a77be
+2026-11-10 12:53:56.211391619,cart,ERROR,redis cluster slot moved retry=400,0048e2d06b20
+2026-11-10 13:04:02.125490678,redis,INFO,background save completed keys=499,004674c60201
+2026-11-10 13:06:03.607196698,mysql,INFO,connection established threads=400,00e7bf6ba6ec
+2026-11-10 13:36:57.091473406,mysql,ERROR,too many connections active=772 max=500,00e10141235d
+2026-11-10 13:53:20.507813302,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,00599bead874
+2026-11-10 14:18:41.581751640,auth,WARN,token refresh failed retry=111,00c50ddb7dbb
+2026-11-10 14:28:29.176687205,product,INFO,cache hit ratio=0.480,0081421dff19
+2026-11-10 14:33:16.374164301,redis,ERROR,OOM command not allowed when used memory > maxmemory,00ab3850b0e6
+2026-11-10 14:48:40.825694065,recommend,INFO,recommend list uid=u77402 size=684 cost=684ms,00764469ebba
+2026-11-10 14:51:23.097900069,mysql,INFO,connection established threads=941,00bffb782c7c
+2026-11-10 14:54:09.643287720,redis,INFO,background save completed keys=213,0072f1e0b849
+2026-11-10 15:17:28.958896832,order,INFO,order created order_id=T20261105190 amount=824,00bd81d56c03
+2026-11-10 16:47:23.796488218,search,ERROR,search timeout after 107ms,009ff609d25b
+2026-11-10 18:06:32.410803791,product,ERROR,mysql connection pool exhausted active=803,00d3cbacdf8e
+2026-11-10 18:24:56.730115368,redis,INFO,client connected addr=172.20.8.5,0092175fb087
+2026-11-10 18:25:48.921993722,redis,ERROR,OOM command not allowed when used memory > maxmemory,004739e811c2
+2026-11-10 18:59:19.827880346,gateway,INFO,GET /api/v1/premium status=200 cost=641ms,001cb6b59541
+2026-11-10 20:36:21.285868039,inventory,ERROR,inventory service health check failed,00822186be69
+2026-11-10 21:40:47.175037947,redis,ERROR,MISCONF Redis is configured to save RDB snapshots,008ca8e7d0dd
+2026-11-10 21:51:27.038090225,gateway,ERROR,no healthy upstream for service=search,004238d13a60
+2026-11-10 21:55:20.081336208,search,INFO,search query=coupon hits=850 cost=850ms,009aefe6d57d
+2026-11-10 22:27:03.834391366,gateway,ERROR,no healthy upstream for service=inventory,00d21523b22a
+2026-11-10 23:35:54.571898817,gateway,INFO,POST /api/v1/iphone15 status=201 cost=182ms,0029a56c7165

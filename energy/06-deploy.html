@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 章 · 算法服务化与上线运维 | 能源数据与算法工程师</title>
+<meta name="description" content="把离线模型变成稳定在线服务：API 契约、FastAPI 实现、版本管理、监控指标、漂移检测、容器化与线上事故清单。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 6 章 · <b>算法服务化与上线运维</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 06 · SERVING &amp; MLOPS</div>
+          <h1>算法服务化与上线运维</h1>
+          <p class="lead">Notebook 里 MAPE 1.78% 不算数。这一章讲：怎么把模型封成别人能调用的接口、怎么保证线上结果和离线一致、怎么发现模型悄悄变差、以及上线后最常见的七种事故。这套工作常被统称为 MLOps（机器学习运维），落到本岗位，就是“让算法稳定地跑在线上”。</p>
+          <div class="page-meta">
+            <span>预计 90 分钟</span>
+            <span>前置：第 4、5 章（建议先跑通项目一）</span>
+            <span>产出：两个可调用的 FastAPI 服务</span>
+          </div>
+        </div>
+
+        <h2 id="why">为什么“会调库”不够，还要会服务化</h2>
+        <p>招聘要求里写得很直白：“将训练完成的预测、异常检测算法封装成标准化微服务，对接后端平台调用；完成算法版本管理、线上效果监控、迭代调优。”这句话翻译成日常工作是：</p>
+
+        <div class="callout what">
+          <b class="t">接口（API）到底是什么：一个点菜窗口</b>
+          <p>把服务想成餐馆：平台不需要进厨房，只要对着窗口说“要一份未来 24 小时预测”，窗口递出一张单子。这个窗口就是 <strong>API</strong>。<strong>JSON</strong> 是单子的格式——带字段名的文本，例如 <code>{"load_mw": 812.4}</code>；<strong>POST</strong> 是“提交一张新单子”的动作。你写服务，就是开这个窗口，并保证不管谁来、什么时候来，递出来的单子格式都一样。</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>平台同学不会读你的 Notebook</h4>
+            <p>他们只认 HTTP 接口：给一个 JSON，返回一个 JSON。你要把“读 CSV、造特征、预测”这一串动作，变成一个稳定的 <code>POST</code>。</p>
+          </div>
+          <div class="card tight">
+            <h4>线上数据和你训练时不一样</h4>
+            <p>时区、单位、缺失、列顺序、节假日表，任何一处不一致，结果就会错，而且不一定报错——这是最危险的。</p>
+          </div>
+          <div class="card tight">
+            <h4>模型会“过期”</h4>
+            <p>园区新入驻了企业、电价调整、设备改造，都会让分布漂移。没有监控，你会在三个月后才发现模型早就废了。</p>
+          </div>
+          <div class="card tight">
+            <h4>出问题要能定位</h4>
+            <p>是数据没来、特征错位、模型版本回滚，还是调用方传错？日志和指标必须能回答这些问题。</p>
+          </div>
+        </div>
+
+        <h2 id="lifecycle">一个模型服务的完整生命周期</h2>
+        <div class="steps">
+          <div class="step"><h4>离线训练与评估</h4><p>产出模型文件 + 特征列表 + 指标报告 + 训练数据时间范围。这四样必须一起归档，缺一不可。</p></div>
+          <div class="step"><h4>打包与版本号</h4><p>模型、特征顺序、预处理参数、阈值、依赖版本冻结成一个可追溯的版本，例如 <code>load-lgb-2024.12.1</code>。</p></div>
+          <div class="step"><h4>服务封装</h4><p>FastAPI 提供接口，启动时加载模型（只加载一次），请求时只做特征拼装与推理。</p></div>
+          <div class="step"><h4>联调与灰度</h4><p>先影子模式（只记录不生效）跑一周，对比线上输出与离线回放是否一致，再切 10% 流量。</p></div>
+          <div class="step"><h4>监控与告警</h4><p>看四类指标：可用性、延迟、输入数据质量、预测精度/漂移。任意一类越界都要有人收到通知。</p></div>
+          <div class="step"><h4>迭代与回滚</h4><p>新模型上线必须能一键回滚到上一版；回滚时间要写进 SLA。</p></div>
+        </div>
+
+        <h2 id="contract">先定契约（接口约定），再写代码</h2>
+        <p>服务化的第一件事不是写 FastAPI，而是和调用方把<strong>输入输出字段</strong>定死。契约不清，后面全是扯皮。下面是项目一实际使用的契约。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">POST /v1/forecast · 请求</span><button class="copy">复制</button></div>
+          <pre>{
+  <span class="s">"origin_ts"</span>: <span class="s">"2024-12-31T00:00:00"</span>,
+  <span class="s">"load_history"</span>: [
+    {<span class="s">"ts"</span>: <span class="s">"2024-12-24T00:00:00"</span>, <span class="s">"load_mw"</span>: <span class="n">812.4</span>},
+    <span class="c">// ... 至少 169 个逐小时点，按时间升序，最后一个是 origin 时刻</span>
+  ],
+  <span class="s">"weather_forecast"</span>: [
+    {<span class="s">"ts"</span>: <span class="s">"2024-12-31T01:00:00"</span>, <span class="s">"temp_c"</span>: <span class="n">-2.1</span>}
+    <span class="c">// ... 24 个点，未来 1~24 小时</span>
+  ],
+  <span class="s">"holidays"</span>: [<span class="s">"2025-01-01"</span>]
+}</pre>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">POST /v1/forecast · 响应</span><button class="copy">复制</button></div>
+          <pre>{
+  <span class="s">"model_version"</span>: <span class="s">"load-lgb-2024.12.1"</span>,
+  <span class="s">"origin_ts"</span>: <span class="s">"2024-12-31T00:00:00"</span>,
+  <span class="s">"points"</span>: [
+    {<span class="s">"ts"</span>: <span class="s">"2024-12-31T01:00:00"</span>, <span class="s">"horizon"</span>: <span class="n">1</span>, <span class="s">"load_mw"</span>: <span class="n">795.2</span>},
+    <span class="c">// ... 共 24 个点</span>
+  ],
+  <span class="s">"meta"</span>: {<span class="s">"n_features"</span>: <span class="n">25</span>, <span class="s">"latency_ms"</span>: <span class="n">11.8</span>}
+}</pre>
+        </div>
+
+        <div class="callout what">
+          <b class="t">为什么输入要“历史序列 + 预报”，而不是“25 个特征”</b>
+          <p>如果让调用方直接传 25 个特征，等于把特征工程的责任推给了平台——他们不可能知道 <code>same_hour_yesterday</code> 怎么算。正确分工是：<strong>平台传原始数据（负荷历史、气象预报、日历），算法服务内部造特征</strong>。这样特征逻辑只在一处维护，模型迭代不影响调用方。</p>
+        </div>
+
+        <h2 id="fastapi">FastAPI 实现：关键就这几段</h2>
+        <p>完整代码在 <code>projects/p1_load_forecast/api.py</code>，这里只讲骨架。核心原则：<strong>模型在启动时加载一次，请求里只做拼装和推理</strong>。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">api.py · 启动加载 + 健康检查</span><button class="copy">复制</button></div>
+          <pre><span class="k">from</span> fastapi <span class="k">import</span> FastAPI, HTTPException
+<span class="k">from</span> pydantic <span class="k">import</span> BaseModel, Field
+<span class="k">import</span> joblib, time
+
+BUNDLE = joblib.load(ART / <span class="s">"model.joblib"</span>)   <span class="c"># {"model": ..., "features": [...]}</span>
+MODEL, FEATURES = BUNDLE[<span class="s">"model"</span>], BUNDLE[<span class="s">"features"</span>]
+MODEL_VERSION = <span class="s">"load-lgb-2024.12.1"</span>
+
+app = FastAPI(title=<span class="s">"负荷预测服务"</span>, version=MODEL_VERSION)
+
+<span class="s">@app.get</span>(<span class="s">"/health"</span>)
+<span class="k">def</span> health():
+    <span class="k">return</span> {<span class="s">"status"</span>: <span class="s">"ok"</span>, <span class="s">"model_version"</span>: MODEL_VERSION,
+            <span class="s">"n_features"</span>: len(FEATURES)}
+</pre>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">api.py · 推理主流程（节选）</span><button class="copy">复制</button></div>
+          <pre><span class="s">@app.post</span>(<span class="s">"/v1/forecast"</span>)
+<span class="k">def</span> forecast(req: ForecastRequest):
+    t0 = time.perf_counter()
+    s = build_hourly_series(req.load_history)          <span class="c"># 校验排序、去重、补到连续小时</span>
+    <span class="k">if</span> len(s) &lt; <span class="n">169</span>:
+        <span class="k">raise</span> HTTPException(<span class="n">400</span>, <span class="s">"load_history 至少需要 169 个逐小时点"</span>)
+
+    rows = []
+    <span class="k">for</span> h <span class="k">in</span> <span class="n">range</span>(<span class="n">1</span>, <span class="n">25</span>):
+        ts = req.origin_ts + pd.Timedelta(hours=h)
+        temp = pick_temp(req.weather_forecast, ts)
+        rows.append(make_features(s, h, ts, temp, req.holidays))
+
+    X = pd.DataFrame(rows)[FEATURES].astype(<span class="k">float</span>)   <span class="c"># 列顺序必须和训练时一致</span>
+    y = MODEL.predict(X)
+
+    <span class="k">return</span> {
+        <span class="s">"model_version"</span>: MODEL_VERSION,
+        <span class="s">"origin_ts"</span>: req.origin_ts,
+        <span class="s">"points"</span>: [{<span class="s">"ts"</span>: str(ts), <span class="s">"horizon"</span>: h, <span class="s">"load_mw"</span>: round(<span class="k">float</span>(v), <span class="n">2</span>)}
+                    <span class="k">for</span> h, ts, v <span class="k">in</span> zip(<span class="n">range</span>(<span class="n">1</span>, <span class="n">25</span>), ts_list, y)],
+        <span class="s">"meta"</span>: {<span class="s">"n_features"</span>: len(FEATURES),
+                 <span class="s">"latency_ms"</span>: round((time.perf_counter() - t0) * <span class="n">1000</span>, <span class="n">1</span>)},
+    }
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">线上第一大事故：特征列顺序变了</b>
+          <p>LightGBM 按列位置读特征。如果服务里用 <code>df[FEATURES]</code> 之前列被打乱，模型<strong>不会报错</strong>，只会安静地给出离谱结果。防御手段有三层：① 模型包里存特征名；② 推理前 <code>assert list(X.columns) == FEATURES</code>；③ 服务启动时用一条样例做<strong>冒烟测试</strong>，输出和离线基准比对，差异超过阈值就拒绝启动。</p>
+        </div>
+
+        <h2 id="batch">批量与实时：两种调用模式</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">模式</th><th style="width:26%">典型场景</th><th style="width:26%">实现要点</th><th>注意</th></tr></thead>
+            <tbody>
+              <tr><td><strong>实时单点</strong></td><td>平台点开某个测点，查看未来 24 小时</td><td>一次请求一个 origin，返回 24 点</td><td>延迟目标 &lt; 200 ms；要限流防刷</td></tr>
+              <tr><td><strong>批量日跑</strong></td><td>每天 0 点给全园区 40 个测点出预测</td><td>一个请求带多个测点，或离线任务批量写库</td><td>失败要能重跑，且幂等</td></tr>
+              <tr><td><strong>回放/回测</strong></td><td>验证新模型在历史 3 个月的表现</td><td>离线脚本，不走服务</td><td>必须用与线上一致的特征代码</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>批量场景不要“循环调 40 次接口”。正确做法是一次请求传数组，服务内部一次性构造特征矩阵、一次 <code>predict</code>。树模型批量推理的吞吐远高于逐条调用。</p>
+
+        <h2 id="version">版本管理：模型不是单个文件</h2>
+        <p>一个可回滚的模型版本至少包含下面这些内容。少一样，出问题时就查不清。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">artifacts/ 目录规范</span><button class="copy">复制</button></div>
+          <pre>artifacts/
+├── model.joblib            <span class="c"># {"model": LGBMRegressor, "features": [...]}</span>
+├── metrics.json            <span class="c"># 测试区间、各模型指标、分时段误差</span>
+├── feature_importance.csv
+├── train_manifest.json     <span class="c"># 训练数据时间范围、行数、超参、代码 commit</span>
+└── model.card.md           <span class="c"># 用途、输入输出、已知局限、负责人</span>
+</pre>
+        </div>
+
+        <p><code>train_manifest.json</code> 里建议记录：训练起止时间、样本数、特征列表、超参、随机种子、评估指标、代码版本号。<strong>面试时能拿出这个文件，可信度立刻不一样</strong>——它证明你不是“跑完就丢”。</p>
+
+        <h2 id="monitor">监控：上线后到底看什么</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:15%">类别</th><th style="width:35%">指标</th><th>越界怎么办</th></tr></thead>
+            <tbody>
+              <tr><td><strong>可用性</strong></td><td>请求成功率、P99 延迟、错误码分布</td><td>&gt;1% 错误或 P99 &gt; 500 ms 告警；先查依赖与日志</td></tr>
+              <tr><td><strong>输入质量</strong></td><td>缺失率、越界值比例、历史长度不足的请求数</td><td>输入异常直接拒绝（4xx），不要“猜一个值”返回</td></tr>
+              <tr><td><strong>预测精度</strong></td><td>T+1 回算 MAPE、按小时/按测点 MAPE、偏差（bias）</td><td>连续 3 天高于基线 50% 触发复查</td></tr>
+              <tr><td><strong>分布漂移</strong></td><td>特征 PSI、预测值分布均值/方差</td><td>PSI &gt; 0.2 提示显著漂移，评估是否重训</td></tr>
+              <tr><td><strong>业务效果</strong></td><td>购电偏差、需量超标次数、告警确认率</td><td>这是最终指标，按月复盘</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>漂移检测：PSI 怎么算</h3>
+        <p>PSI（Population Stability Index）衡量“当前分布”和“训练分布”的差异。做法是把训练集某个特征分成 10 个分箱，统计两边的占比，再算：</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">psi.py · 20 行实现</span><button class="copy">复制</button></div>
+          <pre><span class="k">def</span> psi(base: np.ndarray, cur: np.ndarray, bins: <span class="k">int</span> = <span class="n">10</span>) -&gt; <span class="k">float</span>:
+    edges = np.unique(np.quantile(base, np.linspace(<span class="n">0</span>, <span class="n">1</span>, bins + <span class="n">1</span>)))
+    b = np.histogram(base, bins=edges)[<span class="n">0</span>] / len(base)
+    c = np.histogram(cur,  bins=edges)[<span class="n">0</span>] / len(cur)
+    b = np.clip(b, <span class="n">1e-6</span>, <span class="k">None</span>)
+    c = np.clip(c, <span class="n">1e-6</span>, <span class="k">None</span>)
+    <span class="k">return</span> <span class="k">float</span>(np.sum((c - b) * np.log(c / b)))
+
+<span class="c"># 经验判据：&lt;0.1 稳定；0.1~0.2 需关注；&gt;0.2 显著漂移，评估重训</span>
+</pre>
+        </div>
+
+        <div class="callout how">
+          <b class="t">漂移了不一定要立刻重训</b>
+          <p>先判断是<strong>数据漂移</strong>还是<strong>概念漂移</strong>。如果只是特征分布变了但精度没掉（比如负荷整体上移，模型仍跟得上），可以只更新标准化参数或基线；如果精度持续下降，才重训。盲目重训可能把模型带偏，尤其是在标签延迟到达的场景。</p>
+        </div>
+
+        <h3>精度回算：T+1 才能算 MAPE</h3>
+        <p>预测服务当天只能拿到预测值，真实负荷要等第二天。所以精度监控是<strong>延迟一天</strong>的：每天凌晨用昨日真实值回算过去 7 天的滚动 MAPE，低于阈值就告警。这一步要写成定时任务，不能靠人手动跑。</p>
+
+        <h2 id="docker">容器化与部署</h2>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">Dockerfile</span><button class="copy">复制</button></div>
+          <pre><span class="k">FROM</span> python:3.11-slim
+<span class="k">WORKDIR</span> /app
+<span class="k">COPY</span> requirements.txt .
+<span class="k">RUN</span> pip install --no-cache-dir -r requirements.txt
+<span class="k">COPY</span> artifacts ./artifacts
+<span class="k">COPY</span> api.py .
+<span class="k">EXPOSE</span> 8000
+<span class="k">CMD</span> [<span class="s">"uvicorn"</span>, <span class="s">"api:app"</span>, <span class="s">"--host"</span>, <span class="s">"0.0.0.0"</span>, <span class="s">"--port"</span>, <span class="s">"8000"</span>]
+</pre>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">本地启动与自测</span><button class="copy">复制</button></div>
+          <pre>pip install fastapi uvicorn joblib lightgbm pandas numpy scipy
+uvicorn api:app --reload --port 8000
+<span class="c"># 打开 http://127.0.0.1:8000/docs 可直接在页面上试接口</span>
+curl http://127.0.0.1:8000/health
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">依赖版本必须锁死</b>
+          <p>LightGBM、numpy、pandas 的版本差异可能导致模型加载失败或结果微小偏移。生产镜像里要用 <code>pip freeze</code> 生成精确版本，不要写 <code>lightgbm&gt;=4</code> 这种范围。模型文件与训练环境的版本要一起记录。</p>
+        </div>
+
+        <h2 id="incidents">七种线上事故与排查顺序</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">现象</th><th style="width:32%">最可能原因</th><th>排查动作</th></tr></thead>
+            <tbody>
+              <tr><td>返回全 0 或全相同值</td><td>特征矩阵列错位、或某列全为 NaN 被填充成常数</td><td>打印前 3 行特征，与离线回放逐列比对</td></tr>
+              <tr><td>预测值整体偏高/偏低固定比例</td><td>单位不一致（kW vs MW）、倍率未还原</td><td>核对输入单位与训练数据单位</td></tr>
+              <tr><td>延迟突然从 20 ms 涨到 2 s</td><td>每次请求重复加载模型、或日志写满磁盘</td><td>确认模型只在启动时加载；查磁盘与 GC</td></tr>
+              <tr><td>节假日预测全错</td><td>节假日表过期，或时区按 UTC 解析</td><td>检查年节假日配置；统一用本地时区</td></tr>
+              <tr><td>接口 422 大量增加</td><td>调用方传了空值、时间格式变化、字段改名</td><td>看错误详情；契约变更要版本化</td></tr>
+              <tr><td>精度缓慢下降但无报错</td><td>分布漂移（新企业入驻、设备改造）</td><td>跑 PSI + 分测点 MAPE，定位漂移来源</td></tr>
+              <tr><td>同一请求两次结果不同</td><td>模型未固定随机性、或特征里有 <code>now()</code></td><td>禁用推理期随机性；特征只依赖输入</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="checklist">上线检查清单</h2>
+        <ul class="checklist">
+          <li><code>/health</code> 返回模型版本与特征数，可用于探活。</li>
+          <li>模型与特征列表一起加载，推理前断言列顺序。</li>
+          <li>输入长度、时间连续性、单位、时区都有校验，错误返回 4xx 而不是 500。</li>
+          <li>启动时跑一条冒烟样例，与离线基准结果比对。</li>
+          <li>每条请求记录：时间、版本、输入摘要、输出摘要、耗时。</li>
+          <li>T+1 精度回算任务已配置，连续 3 天越界会告警。</li>
+          <li>特征 PSI 日报已配置，阈值 0.2。</li>
+          <li>上一版模型可直接回滚，回滚步骤写在 runbook 里。</li>
+          <li>依赖版本已锁定，镜像可重复构建。</li>
+          <li>接口有超时与限流，避免被单个调用方拖垮。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">延伸阅读</b>
+          <p>这一章讲“能上线”，<a href="14-engineering.html">专题 B5 · 算法工程实践</a> 讲“敢交付”：测试金字塔、CI/CD、DVC/MLflow、性能、监控分级与成本估算。</p>
+        </div>
+
+        <h2 id="faq">常见问题</h2>
+        <details class="qa" open>
+          <summary>Q1：为什么不直接把模型给平台，让他们自己调？</summary>
+          <div class="ans">因为特征工程、预处理、阈值都是算法的一部分。让平台重写一遍，必然出现“训练和推理不一致”。服务化的本质是<strong>把算法边界收拢到一个可测试的单元</strong>里，平台只负责传原始数据和展示结果。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：小项目也要上 Docker 和监控吗？</summary>
+          <div class="ans">演示项目至少要能一条命令启动、有 <code>/health</code>、有日志。Docker 不是必须，但它是“换台机器也能跑”的最省事方式。监控可以先从“每天回算一次 MAPE 写进 CSV”开始，不必一上来就上 Prometheus。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：模型多久重训一次？</summary>
+          <div class="ans">没有固定答案，看漂移速度。常见做法：月度定时重训 + 精度触发重训（连续 3 天劣化 50%）+ 事件触发（电价调整、新企业入驻）。重训前必须回测，不能直接覆盖线上模型。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：怎么保证离线指标和线上一致？</summary>
+          <div class="ans">三条：① 特征代码只有一份，离线和线上共用；② 定期做“回放测试”，用线上真实请求的输入跑离线模型，逐点比对；③ 上线前用历史某天做端到端复现，误差应在浮点精度级别。</div>
+        </details>
+        <details class="qa">
+          <summary>Q5：没有 Kubernetes，怎么部署？</summary>
+          <div class="ans">一台 Linux 服务器 + systemd + uvicorn 就能跑。关键是：进程守护、日志轮转、开机自启、版本目录切换。K8s 解决的是多副本与弹性，不是“能不能上线”。面试时说清这个取舍，比堆名词更好。</div>
+        </details>
+
+        <h2 id="check">自测</h2>
+        <ul class="checklist">
+          <li>说出模型服务化的六个阶段，以及每个阶段的产物。</li>
+          <li>为什么输入设计成“原始序列”而不是“25 个特征”？</li>
+          <li>特征列顺序错位为什么不会报错？怎么防？</li>
+          <li>PSI 的计算逻辑是什么？0.2 这个阈值代表什么？</li>
+          <li>预测精度监控为什么要延迟一天？怎么自动回算？</li>
+          <li>如果线上预测突然全是同一个值，你的排查顺序是什么？</li>
+        </ul>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="05-anomaly.html">← 上一章：异常用能识别</a>
+          <a class="btn-ghost" style="text-decoration:none" href="07-project-load.html">下一章：项目一 · 短期负荷预测 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 6 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

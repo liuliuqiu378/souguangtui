@@ -1,0 +1,53 @@
+{
+  "data": {
+    "rows": 15840,
+    "nodes": 22,
+    "days": 30,
+    "freq": "1h",
+    "incidents": 20,
+    "alarms": 509,
+    "changes": 32,
+    "logs": 2818
+  },
+  "rca": {
+    "earliest": {
+      "top1": 0.75
+    },
+    "maxscore": {
+      "top1": 0.2
+    },
+    "topology": {
+      "top1": 0.85,
+      "top3": 0.95
+    },
+    "graph_rag": {
+      "top1": 1.0,
+      "top3": 1.0
+    }
+  },
+  "agent": {
+    "incidents": 20,
+    "auto_located": 1.0,
+    "evidence_complete": 1.0,
+    "action_correct": 1.0,
+    "avg_tool_calls": 6.0,
+    "hallucination_blocked": 0,
+    "mttr_manual_min": 42,
+    "mttr_agent_min": 11
+  },
+  "capacity": {
+    "ywtb": {
+      "mae": 10.01,
+      "mape": 6.17,
+      "quota": 524.1,
+      "breach_at": null
+    },
+    "yb": {
+      "mae": 8.7,
+      "mape": 7.18,
+      "quota": 375.7,
+      "breach_at": null
+    }
+  },
+  "runtime_sec": 3.8
+}

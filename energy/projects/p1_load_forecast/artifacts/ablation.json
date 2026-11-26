@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "full",
+    "n_features": 25,
+    "mape": 1.78,
+    "mae": 5.78
+  },
+  {
+    "variant": "no_weather",
+    "n_features": 21,
+    "mape": 2.22,
+    "mae": 7.24
+  },
+  {
+    "variant": "no_recent_day",
+    "n_features": 24,
+    "mape": 1.66,
+    "mae": 5.38
+  },
+  {
+    "variant": "no_lag_rolling",
+    "n_features": 16,
+    "mape": 1.74,
+    "mae": 5.63
+  },
+  {
+    "variant": "calendar_only",
+    "n_features": 10,
+    "mape": 2.1,
+    "mae": 6.82
+  },
+  {
+    "variant": "no_horizon",
+    "n_features": 24,
+    "mape": 1.79,
+    "mae": 5.8
+  }
+]

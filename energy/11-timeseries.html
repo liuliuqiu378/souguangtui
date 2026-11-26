@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>专题 B2 · 时序数据工程进阶 | 能源数据与算法工程师</title>
+<meta name="description" content="时区与时间语义、96 点日历、pandas 时间操作、功率与电量的聚合、缺失机制、异常值处理、进阶特征、Parquet/DuckDB/Spark 管道、训练与服务一致性。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">专题 B2 · <b>时序数据工程进阶</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">SPECIAL B2 · TIME SERIES ENGINEERING</div>
+          <h1>时序数据工程进阶：把脏数据变成可信特征</h1>
+          <p class="lead">第 3 章讲了“该不该补、该不该删”的判断。这一章往下钻一层：<strong>用什么代码做、为什么会做错、做错之后模型会怎么坏</strong>。目标是你能独立写出可复现、可上线的特征流水线，而不是在 Notebook 里拼拼凑凑。</p>
+          <div class="page-meta">
+            <span>预计 100 分钟</span>
+            <span>前置：第 2、3 章</span>
+            <span>产出：一条可复用的特征流水线</span>
+            <span>性质：技术基础 / 实践</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先明确：什么叫“可信特征”</b>
+          <p>三个条件同时满足才算：① 每个值在预测发生的那一刻真的拿得到；② 时间对齐正确，<code>shift(24)</code> 就是 24 小时前，不因缺失而错位；③ 训练和服务用的是同一套代码、同一套口径。缺一条，离线分数再漂亮，上线也会崩。</p>
+        </div>
+
+        <h2 id="time">时间列：最容易错、也最不该错</h2>
+        <p>时序项目里 80% 的“玄学 bug”都和时间有关。先把四个概念分清：</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">概念</th><th style="width:34%">含义</th><th>出错后的表现</th></tr></thead>
+            <tbody>
+              <tr><td><strong>时区</strong></td><td>同一时刻在不同地区的本地时间不同，中国为 UTC+8</td><td>整体错 8 小时，日曲线形态“看着对但时间全偏”</td></tr>
+              <tr><td><strong>时间戳语义</strong></td><td>这个 timestamp 是区间起点、终点，还是瞬时值</td><td>15 分钟数据整体前移/后移一格，峰值对不上</td></tr>
+              <tr><td><strong>采样约定</strong></td><td>一天 96 点还是 96 段；00:00 属于哪一天</td><td>日电量少算/多算一格，月度累计对不上账</td></tr>
+              <tr><td><strong>夏令时</strong></td><td>部分国家每年调表，出现 23/25 小时的一天</td><td>如果数据源跨时区或多国项目，会出现重复/缺失小时</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：把本地时间当 UTC 存</b>
+          <p>“2024-08-01 00:00”如果不带时区，不同系统会各自解释。做法：<strong>存储统一用 UTC 或带时区的时间戳，展示时再转本地</strong>。项目里用 <code>pd.Timestamp(..., tz="Asia/Shanghai")</code> 或统一存 <code>+08:00</code>，并在数据字典里写清楚。</p>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">时间处理的正确顺序</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 1) 解析时明确时区；没有时区就显式指定</span>
+ts = pd.to_datetime(df[<span class="s">"ts"</span>], utc=<span class="k">True</span>).dt.tz_convert(<span class="s">"Asia/Shanghai"</span>)
+
+<span class="c"># 2) 先建完整索引，再对齐数据（顺序不能反）</span>
+idx = pd.date_range(start, end, freq=<span class="s">"15min"</span>, tz=<span class="s">"Asia/Shanghai"</span>)
+s = df.set_index(<span class="s">"ts"</span>)[<span class="s">"power_kw"</span>].reindex(idx)
+
+<span class="c"># 3) 检查是否有重复时间戳（重复会让 reindex 直接报错）</span>
+dup = df.duplicated([<span class="s">"meter_id"</span>, <span class="s">"ts"</span>]).sum()
+
+<span class="c"># 4) 检查采样间隔是否都是 15 分钟</span>
+gaps = s.index.to_series().diff().value_counts().head()
+</pre>
+        </div>
+
+        <h2 id="calendar">96 点、日历与“业务时间”</h2>
+        <p>15 分钟粒度一天 96 点，这是电力结算和需量统计的常见口径。但“一天”在业务上不等于自然日：工厂的班次可能从 08:00 开始，商业体的营业日可能从 10:00 算起。做特征时必须区分<strong>自然时间</strong>和<strong>业务时间</strong>。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">日历特征</th><th style="width:36%">怎么造</th><th>为什么有效</th></tr></thead>
+            <tbody>
+              <tr><td><strong>小时 / 15 分钟槽</strong></td><td><code>ts.hour</code>、<code>ts.hour*4 + ts.minute//15</code></td><td>捕捉日内形态与班次</td></tr>
+              <tr><td><strong>星期 / 是否周末</strong></td><td><code>ts.dayofweek</code>、<code>is_weekend</code></td><td>工作日与周末曲线不同</td></tr>
+              <tr><td><strong>节假日 / 调休</strong></td><td>维护一张节假日表，标注“放假/调休上班”</td><td>中国调休会让“周六”变成工作日，只靠星期几会错</td></tr>
+              <tr><td><strong>节前节后天数</strong></td><td>距离最近节假日的天数（有符号）</td><td>春节前后负荷渐变，不是突变</td></tr>
+              <tr><td><strong>月份 / 季节</strong></td><td><code>ts.month</code>，或正弦编码</td><td>空调负荷有明显季节性与温度阈值</td></tr>
+              <tr><td><strong>正弦/余弦编码</strong></td><td><code>sin(2πh/24)</code>、<code>cos(2πh/24)</code></td><td>让 23 点和 0 点在数值上接近，树模型也能受益</td></tr>
+              <tr><td><strong>业务日序号</strong></td><td>按班次/营业日重定义 day_id</td><td>跨零点的夜班不应被切成两天</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">构建日历表（含调休）</span><button class="copy">复制</button></div>
+          <pre>cal = pd.DataFrame({<span class="s">"ds"</span>: pd.date_range(start, end, freq=<span class="s">"D"</span>)})
+cal[<span class="s">"dow"</span>] = cal[<span class="s">"ds"</span>].dt.dayofweek
+cal[<span class="s">"is_weekend"</span>] = (cal[<span class="s">"dow"</span>] &gt;= <span class="n">5</span>).astype(<span class="k">int</span>)
+
+<span class="c"># 用一张“工作日表”覆盖周末判断：调休上班的周六 is_workday=1</span>
+workday = pd.read_csv(<span class="s">"calendar_cn.csv"</span>, parse_dates=[<span class="s">"ds"</span>])
+cal = cal.merge(workday[[<span class="s">"ds"</span>, <span class="s">"is_workday"</span>, <span class="s">"is_holiday"</span>]], on=<span class="s">"ds"</span>, how=<span class="s">"left"</span>)
+cal[<span class="s">"is_workday"</span>] = cal[<span class="s">"is_workday"</span>].fillna((cal[<span class="s">"dow"</span>] &lt; <span class="n">5</span>).astype(<span class="k">int</span>))
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一个容易被忽略的细节</b>
+          <p>节假日表不是“放假日列表”，而是“每一天是不是工作日”的完整映射。只标放假、不标调休，会把调休上班的周六当成周末，导致那天的预测整体偏低。项目一的 <code>is_holiday</code> 和 <code>is_workday</code> 是分开的两个字段，就是为了避免这个问题。</p>
+        </div>
+
+        <h2 id="pandas">pandas 时间工具箱：12 个必会操作</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">操作</th><th style="width:32%">用途</th><th>注意</th></tr></thead>
+            <tbody>
+              <tr><td><code>resample("1h").mean()</code></td><td>降采样，功率取均值</td><td>默认跳过 NaN，要同时看 <code>count()</code></td></tr>
+              <tr><td><code>resample("1D").sum()</code></td><td>电量按日汇总</td><td>单位是 kWh 还是 kW×0.25，先统一</td></tr>
+              <tr><td><code>asfreq("15min")</code></td><td>只改索引频率，不聚合</td><td>会插入 NaN，不会填充</td></tr>
+              <tr><td><code>reindex(full_idx)</code></td><td>补齐缺失时段</td><td>必须先建完整索引，否则 shift 错位</td></tr>
+              <tr><td><code>ffill(limit=8)</code></td><td>短缺口前向填充</td><td>limit 单位是“行数”，不是小时</td></tr>
+              <tr><td><code>interpolate(limit=8)</code></td><td>线性插值</td><td>长缺口不要插，会造出虚假平台</td></tr>
+              <tr><td><code>rolling(96, min_periods=72)</code></td><td>滑窗统计</td><td>窗口是否包含当前点要明确</td></tr>
+              <tr><td><code>shift(96)</code></td><td>昨日同期</td><td>依赖索引完整，否则是“上一条记录”</td></tr>
+              <tr><td><code>groupby("meter_id").shift(1)</code></td><td>按测点分组滞后</td><td>不分组会把别的测点数据串进来</td></tr>
+              <tr><td><code>merge_asof</code></td><td>按时间就近对齐（如气象、工单）</td><td>必须排序，<code>direction</code> 要选对</td></tr>
+              <tr><td><code>tz_localize / tz_convert</code></td><td>指定 / 转换时区</td><td>本地化前必须是 naive 时间</td></tr>
+              <tr><td><code>to_period("M")</code></td><td>按月聚合、月度对齐</td><td>跨年边界要检查</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">按测点分组造滞后，避免串行</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 错：所有测点混在一起 shift，M002 会拿到 M001 的值</span>
+<span class="c"># df["lag96"] = df["power_kw"].shift(96)</span>
+
+<span class="c"># 对：先按测点分组，再在组内排序、shift</span>
+df = df.sort_values([<span class="s">"meter_id"</span>, <span class="s">"ts"</span>])
+df[<span class="s">"lag96"</span>] = df.groupby(<span class="s">"meter_id"</span>)[<span class="s">"power_kw"</span>].shift(<span class="n">96</span>)
+df[<span class="s">"roll96_mean"</span>] = (df.groupby(<span class="s">"meter_id"</span>)[<span class="s">"power_kw"</span>]
+                        .transform(<span class="k">lambda</span> x: x.shift(<span class="n">1</span>).rolling(<span class="n">96</span>, min_periods=<span class="n">72</span>).mean()))
+</pre>
+        </div>
+
+        <h2 id="energy">聚合规则：功率取均值，电量取求和</h2>
+        <p>这是最基础、也最常错的一条。15 分钟功率 → 1 小时：功率取<strong>平均</strong>；电量取<strong>求和</strong>。如果数据单位是 kW 而你想得到 kWh，还要乘 0.25。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">原始量</th><th style="width:16%">目标</th><th style="width:26%">正确聚合</th><th>典型错误</th></tr></thead>
+            <tbody>
+              <tr><td>功率 kW（15min）</td><td>功率 kW（1h）</td><td><code>mean()</code></td><td>用 <code>sum()</code>，数值放大 4 倍</td></tr>
+              <tr><td>功率 kW（15min）</td><td>电量 kWh（1h）</td><td><code>sum() × 0.25</code></td><td>直接 <code>sum()</code> 当 kWh</td></tr>
+              <tr><td>电量 kWh（15min）</td><td>电量 kWh（1h）</td><td><code>sum()</code></td><td>用 <code>mean()</code>，少算 3/4</td></tr>
+              <tr><td>功率 kW（15min）</td><td>最大需量 kW</td><td><code>max()</code>，再按月取最大</td><td>按日取平均当需量</td></tr>
+              <tr><td>累计电度 kWh</td><td>区间电量</td><td><code>diff()</code>，处理倒走</td><td>直接当功率建模</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：累计电度换表/清零导致 diff 出现负值</b>
+          <p>换表后读数从 0 开始，<code>diff()</code> 会出现一个大负数。处理方式：先把负值置空，再用容量上限做合理性填充，并记录“换表事件”。不要简单取绝对值，那会造出一个虚假的巨量尖峰。</p>
+        </div>
+
+        <h2 id="missing">缺失：先判断机制，再选方法</h2>
+        <p>缺失不是“补上就行”。不同机制要用不同策略，否则会系统性扭曲分布。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">机制</th><th style="width:31%">含义</th><th style="width:25%">能源场景例子</th><th>处理</th></tr></thead>
+            <tbody>
+              <tr><td><strong>完全随机（MCAR）</strong></td><td>缺失与任何变量无关</td><td>偶发通信丢包</td><td>短缺口插值，长缺口置空 + 标记</td></tr>
+              <tr><td><strong>随机（MAR）</strong></td><td>缺失与其他可观测变量有关</td><td>高温天空调满负荷时网关过载丢数</td><td>用相关变量建模填补，或加缺失标记</td></tr>
+              <tr><td><strong>非随机（MNAR）</strong></td><td>缺失与缺失值本身有关</td><td>窃电者故意断表、故障时设备直接掉线</td><td>不能简单插值；缺失本身就是强特征</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">缺失处理的标准流程</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 1) 统计连续缺失长度，而不是只看缺失率</span>
+na = s.isna()
+grp = (na != na.shift()).cumsum()
+runs = s[na].groupby(grp[na]).size()      <span class="c"># 每一段连续缺失的长度</span>
+
+<span class="c"># 2) 短缺口：按时间线性插值（最多 2 小时 = 8 个 15min 点）</span>
+s_filled = s.interpolate(method=<span class="s">"time"</span>, limit=<span class="n">8</span>, limit_area=<span class="s">"inside"</span>)
+
+<span class="c"># 3) 长缺口：保持 NaN，并加标记列，让模型知道“这里不可信”</span>
+s_missing_flag = s.isna().astype(<span class="k">int</span>)
+
+<span class="c"># 4) 记录：缺失率、最长缺口、影响时段，写进质量报表</span>
+report = {<span class="s">"missing_rate"</span>: s.isna().mean(),
+          <span class="s">"max_gap"</span>: int(runs.max()) <span class="k">if</span> len(runs) <span class="k">else</span> <span class="n">0</span>}
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">缺失标记为什么有用</b>
+          <p>如果某测点夜间经常断线，模型看到“缺失标记=1”就知道这条读数不可靠，可以更多依赖同业基线。反过来，如果所有缺失都被悄悄插值填平，模型会把“插出来的假数据”当真，异常检测会漏报——因为窃电导致的断表被“补”成了正常值。</p>
+        </div>
+
+        <h2 id="outlier">异常值：先问“它是错误还是事实”</h2>
+        <p>异常值不一定要删。设备故障、窃电、极端天气都是真实发生的，它们恰恰是业务关心的信号。你要区分的是<strong>数据错误</strong>和<strong>真实极端事件</strong>。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">方法</th><th style="width:32%">怎么算</th><th>适合 / 不适合</th></tr></thead>
+            <tbody>
+              <tr><td><strong>3σ</strong></td><td>偏离均值 3 倍标准差</td><td>适合近似正态；负荷曲线非正态，容易误杀峰谷</td></tr>
+              <tr><td><strong>IQR</strong></td><td>超出 Q1−1.5IQR 或 Q3+1.5IQR</td><td>稳健，适合整体分布筛查</td></tr>
+              <tr><td><strong>MAD</strong></td><td>用中位数绝对偏差代替标准差</td><td>对极端值稳健，适合单测点</td></tr>
+              <tr><td><strong>滚动中位数</strong></td><td>偏离局部中位数超过阈值</td><td>适合捕捉“卡死”“突跳”，但要设最小窗口</td></tr>
+              <tr><td><strong>STL 残差</strong></td><td>分解后对残差做阈值</td><td>能扣掉日周期，适合负荷曲线</td></tr>
+              <tr><td><strong>业务规则</strong></td><td>负值、超容量、倒走、连续恒定</td><td>最可靠，应优先于统计方法</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">稳健异常标记（MAD + 业务规则）</span><button class="copy">复制</button></div>
+          <pre>med = s.rolling(<span class="n">96</span>, min_periods=<span class="n">48</span>).median()
+mad = (s - med).abs().rolling(<span class="n">96</span>, min_periods=<span class="n">48</span>).median()
+robust_z = <span class="n">0.6745</span> * (s - med) / mad.replace(<span class="n">0</span>, np.nan)
+
+flag = (robust_z.abs() &gt; <span class="n">3.5</span>)
+flag |= (s &lt; <span class="n">0</span>) | (s &gt; capacity * <span class="n">1.2</span>)     <span class="c"># 业务规则优先</span>
+<span class="c"># 注意：只标记，不直接删；让模型/规则决定是否忽略</span>
+</pre>
+        </div>
+
+        <h2 id="features">特征工程进阶：从“能用”到“有区分度”</h2>
+        <p>第 4 章的五类特征是基础版。真实项目里，决定效果的往往是下面这些“更贴近业务”的特征。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">特征族</th><th style="width:34%">怎么造</th><th>适用场景</th></tr></thead>
+            <tbody>
+              <tr><td><strong>多阶滞后</strong></td><td>lag 1/4/24/96/672（按粒度换算）</td><td>短期预测；滞后阶数覆盖日、周周期</td></tr>
+              <tr><td><strong>滑窗统计</strong></td><td>mean/std/min/max/分位数，窗口 4/24/96/672</td><td>描述近期水平与波动</td></tr>
+              <tr><td><strong>同比/环比</strong></td><td>今日同时刻 / 昨日同时刻 − 1</td><td>抵消量级差异，适合多测点</td></tr>
+              <tr><td><strong>傅里叶项</strong></td><td>sin/cos(2πkt/24)、周周期项</td><td>线性模型、神经网络；树模型可选</td></tr>
+              <tr><td><strong>事件距离</strong></td><td>距最近节假日/大修/停产的天数</td><td>渐变型影响，比 0/1 标记更细</td></tr>
+              <tr><td><strong>跨测点特征</strong></td><td>同类型测点均值、园区总负荷占比</td><td>异常检测、缺失时的替代信号</td></tr>
+              <tr><td><strong>天气派生</strong></td><td>体感温度、制冷/制热度日、辐照累计</td><td>空调负荷、光伏</td></tr>
+              <tr><td><strong>业务标记</strong></td><td>班次、检修、限产、节假日值班</td><td>工业负荷，往往是最强特征</td></tr>
+              <tr><td><strong>目标编码</strong></td><td>按测点/类型的历史均值编码</td><td>多测点全局模型；必须用时间切分内统计</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">跨测点特征与傅里叶项</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 同类型测点的同时刻均值：既能做特征，也能做异常基线</span>
+df[<span class="s">"peer_mean"</span>] = (df.groupby([<span class="s">"meter_type"</span>, <span class="s">"ts"</span>])[<span class="s">"power_kw"</span>]
+                     .transform(<span class="s">"mean"</span>))
+df[<span class="s">"peer_ratio"</span>] = df[<span class="s">"power_kw"</span>] / df[<span class="s">"peer_mean"</span>].replace(<span class="n">0</span>, np.nan)
+
+<span class="c"># 日周期与周周期的傅里叶项</span>
+hour_frac = df[<span class="s">"ts"</span>].dt.hour + df[<span class="s">"ts"</span>].dt.minute / <span class="n">60</span>
+df[<span class="s">"sin_d"</span>] = np.sin(<span class="n">2</span> * np.pi * hour_frac / <span class="n">24</span>)
+df[<span class="s">"cos_d"</span>] = np.cos(<span class="n">2</span> * np.pi * hour_frac / <span class="n">24</span>)
+df[<span class="s">"sin_w"</span>] = np.sin(<span class="n">2</span> * np.pi * df[<span class="s">"ts"</span>].dt.dayofweek / <span class="n">7</span>)
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：目标编码用了全量数据</b>
+          <p>用全量历史算“测点平均负荷”再喂给模型，等于把测试期的信息带进训练。正确做法：只用训练窗口内的数据统计，且按时间滚动计算；或者干脆用“同类型同时刻均值”这种不依赖标签的替代。</p>
+        </div>
+
+        <h2 id="pipeline">从 CSV 到数据管道：规模上来之后怎么办</h2>
+        <p>项目里 23 万行，pandas 足够。真实园区可能是几百个测点、几年数据，甚至上亿行。这时要换工具，但思路不变：<strong>分区、增量、可重跑</strong>。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">工具</th><th style="width:30%">解决什么</th><th>什么时候该用</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Parquet</strong></td><td>列式压缩存储，按日期/测点分区</td><td>数据超过内存、需要反复扫描列</td></tr>
+              <tr><td><strong>DuckDB</strong></td><td>单机 SQL 分析，直接查 Parquet</td><td>几千万行以内，替代“pandas + 数据库”</td></tr>
+              <tr><td><strong>Spark</strong></td><td>分布式批处理</td><td>上亿行、跨天批量特征、离线训练</td></tr>
+              <tr><td><strong>Flink</strong></td><td>流处理、窗口聚合</td><td>实时特征、秒级告警、在线监控</td></tr>
+              <tr><td><strong>Kafka</strong></td><td>消息队列，解耦采集与计算</td><td>多源数据、削峰、实时管道</td></tr>
+              <tr><td><strong>Airflow / DolphinScheduler</strong></td><td>任务编排、依赖、重试、补数</td><td>每天固定跑的特征/训练/报表任务</td></tr>
+              <tr><td><strong>时序数据库</strong></td><td>按时间写入与范围查询</td><td>在线服务取历史负荷、监控</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">一个务实的演进路径</b>
+          <p>① 先用 pandas + Parquet 把逻辑跑对；② 数据变大后换 DuckDB，SQL 不改太多；③ 再大或需要多人协作，才上 Spark/Flink；④ 调度从 cron 升级到 Airflow。不要一上来就搭大数据平台——大多数园区项目根本用不到，反而拖慢迭代。</p>
+        </div>
+
+        <h3>分区与增量：不要每天全量重算</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">按日期分区的目录约定</span><button class="copy">复制</button></div>
+          <pre>data/
+├── raw/meter=2024-08-01.parquet
+├── clean/meter=2024-08-01.parquet
+└── features/
+    ├── dt=2024-08-01/part-0.parquet
+    └── dt=2024-08-02/part-0.parquet
+
+<span class="c"># 增量：只重算受影响的分区（含回补窗口）</span>
+<span class="c"># 滞后特征需要“回看”，所以重算范围 = 目标日期 - 最大滞后窗口</span>
+</pre>
+        </div>
+        <p>分区设计要围绕“重跑成本”来做。如果最大滞后是 7 天，那么修改某天的数据，至少要重算它之后 7 天的特征。这个“回补窗口”必须写进调度配置，否则会出现特征与原始数据不一致。</p>
+
+        <h2 id="consistency">训练与服务一致性：最隐蔽的线上事故</h2>
+        <p>离线 MAPE 1.78%，上线变成 6%，最常见的原因不是模型过时，而是<strong>线上算特征的方式和训练时不一样</strong>。</p>
+
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>典型不一致</h4>
+            <p>时区不同、聚合顺序不同、缺失填充不同、滞后窗口含不含当前点不同、单位不同（kW vs W）、节假日表版本不同。</p>
+          </div>
+          <div class="card tight">
+            <h4>怎么防</h4>
+            <p>特征代码只写一份，离线和在线共用；上线前用同一批原始数据回放，逐特征比对；把特征版本号写进模型包。</p>
+          </div>
+        </div>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">特征回放比对（黄金样本）</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 离线：用历史原始数据算一遍特征</span>
+offline = build_features(raw_snapshot)
+
+<span class="c"># 在线：调服务内部的同一函数（或导出的同一模块）</span>
+online = service_build_features(raw_snapshot)
+
+diff = (offline - online).abs()
+assert diff.max().max() &lt; <span class="n">1e-6</span>, diff.stack().sort_values().tail()
+</pre>
+        </div>
+
+        <div class="callout field">
+          <b class="t">Point-in-time 正确性</b>
+          <p>凡是“按测点/类型统计历史均值”的特征，都必须保证统计窗口的截止时间不晚于预测起点。这叫 point-in-time join。做法：给每条统计记录带上 <code>valid_from / valid_to</code>，关联时按时间匹配，而不是直接 merge。项目规模小时容易忽略，一旦上线就会变成“看起来用了历史，其实用了未来”。</p>
+        </div>
+
+        <h2 id="pit">十个高频坑，逐条对照</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:32%">坑</th><th>后果</th><th>正确做法</th></tr></thead>
+            <tbody>
+              <tr><td>不建完整索引就 shift</td><td>滞后错位，模型学到假规律</td><td>先 reindex 到固定频率</td></tr>
+              <tr><td>全表 shift 不分组</td><td>测点之间串数据</td><td><code>groupby(meter_id).shift()</code></td></tr>
+              <tr><td>功率求和当电量</td><td>数值放大 4 倍</td><td>乘 0.25 或改用 mean</td></tr>
+              <tr><td>resample 默认跳过 NaN</td><td>低质量小时被当成完整</td><td>同时看 count，低于阈值置空</td></tr>
+              <tr><td>时区混用</td><td>整体错 8 小时</td><td>存 UTC / 带时区，展示再转</td></tr>
+              <tr><td>长缺口插值</td><td>造出虚假平台，异常漏报</td><td>只补短缺口，长缺口加标记</td></tr>
+              <tr><td>累计电度直接建模</td><td>单调上升，无业务意义</td><td>diff 成区间电量</td></tr>
+              <tr><td>目标编码用全量</td><td>数据泄漏，离线虚高</td><td>只用训练窗口滚动统计</td></tr>
+              <tr><td>缺失直接 dropna</td><td>时间轴断裂，滞后全错</td><td>补索引 + 标记 + 选择性填充</td></tr>
+              <tr><td>离线和在线两套代码</td><td>上线精度骤降</td><td>共用特征模块 + 回放比对</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="qa">常见问题</h2>
+        <details class="qa">
+          <summary>Q1：缺失率 1% 也要处理吗？</summary>
+          <div class="ans">要看缺失的位置。如果集中在某几个测点的连续时段，1% 也足以毁掉滞后特征；如果随机散布且都是单点，影响很小。先看“最长连续缺口”和“受影响测点占比”，再看总缺失率。</div>
+        </details>
+        <details class="qa">
+          <summary>Q2：插值会不会造假数据？</summary>
+          <div class="ans">会，所以只对短缺口插值，并保留缺失标记。插值的目的是让时间轴连续、滞后特征不错位，不是假装数据完整。长缺口应该让模型知道“这里没有观测”。</div>
+        </details>
+        <details class="qa">
+          <summary>Q3：一定要用时序数据库吗？</summary>
+          <div class="ans">不一定。数据量小、只做离线训练时，Parquet + pandas 更简单。时序数据库的价值在“高频写入 + 按时间范围查询 + 在线服务”。选型要看访问模式，不要为了简历堆技术。</div>
+        </details>
+        <details class="qa">
+          <summary>Q4：特征几十个、几百个，怎么筛？</summary>
+          <div class="ans">先按业务逻辑删掉“预测时拿不到”的，再看重要性/相关性/方差，最后用时间切分的验证集做前向选择。不要用全量相关性筛选，那会泄漏；也不要把“重要性低”直接等同于“没用”，树模型会分摊相关特征的重要性。</div>
+        </details>
+
+        <h2 id="check">自测：你的流水线可信吗</h2>
+        <ul class="checklist">
+          <li>能说出你的数据是“区间起点”还是“区间终点”，并证明对齐正确。</li>
+          <li>能写出按测点分组的 <code>shift</code> 与 <code>rolling</code>，并解释为什么必须分组。</li>
+          <li>能区分 MCAR / MAR / MNAR，并各举一个能源场景例子。</li>
+          <li>能解释为什么长缺口不能插值，以及缺失标记为什么是特征。</li>
+          <li>能画出“原始 → 清洗 → 特征 → 训练/服务”的链路，并指出哪一步可能不一致。</li>
+          <li>能对一个 23 万行数据集设计分区与增量重算策略。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">下一步读什么</b>
+          <p>数据可信之后，进入算法：<a href="12-forecast-advanced.html">专题 B3 · 预测算法进阶</a>。如果你更关心“算出来的计划怎么执行”，直接看 <a href="13-optimize.html">专题 B4 · 优化与调度</a>。</p>
+        </div>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 专题 B2 · 数据与指标均可复现
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

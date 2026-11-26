@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 9 章 · 求职表达与 90 天落地 | 能源数据与算法工程师</title>
+<meta name="description" content="把两个项目讲成故事：简历写法、5 分钟演示脚本、20 个高频追问、JD 对照表与入职 90 天计划。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">第 9 章 · <b>求职表达与 90 天落地</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">CHAPTER 09 · CAREER &amp; ONBOARDING</div>
+          <h1>求职表达与 90 天落地</h1>
+          <p class="lead">你已经有了两个能跑的项目，但面试不是代码审查，是“用 30 分钟证明你能干活”。这一章把项目翻译成简历、演示、问答，并给出入职后 90 天的生存计划。</p>
+          <div class="page-meta">
+            <span>预计 70 分钟</span>
+            <span>前置：项目一、项目二</span>
+            <span>产出：简历段落 + 演示脚本 + 问答库</span>
+          </div>
+        </div>
+
+        <h2 id="jd">先把 JD 翻译成“证据清单”</h2>
+        <p>招聘方写的职责与要求，本质是在找五类证据（四项职责 + 一条 EMS 经验门槛）。不要用“我学习能力强”去回应，要用“我做过什么、结果如何”去对应。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">JD 要求</th><th style="width:32%">面试官真正想确认的</th><th>你的证据</th></tr></thead>
+            <tbody>
+              <tr><td>测点数据清洗、缺失填充、异常值剔除，建立质量监控</td><td>你知道真实数据有多脏，清洗不是“dropna 完事”</td><td>项目一注入 5 类脏数据；项目二质量报表与“长缺口不插值”的取舍</td></tr>
+              <tr><td>负荷预测、能耗预警、异常用能、储能优化</td><td>你能把业务问题转成模型问题，并说清边界</td><td>P1 MAPE 1.78%；P2 F1 0.956；LP 调度省 4.99%</td></tr>
+              <tr><td>特征工程、指标计算</td><td>你知道特征为什么有效、怎么防泄漏</td><td>25 个特征分五类；消融实验；同业基线与共因抵消</td></tr>
+              <tr><td>封装微服务、版本管理、线上监控</td><td>你上过线，知道线上和 Notebook 的差别</td><td>FastAPI + 特征列校验 + T+1 精度回算 + PSI 漂移</td></tr>
+              <tr><td>EMS 经验、电力时序特点</td><td>你懂峰平谷、需量、SOC、需求响应</td><td>项目二的完整业务链路与碳/电费核算</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout field">
+          <b class="t">关于“5~10 年经验”这个门槛</b>
+          <p>这个岗位写的是 5~10 年、2~2.5 万。两个月教程能让你具备<strong>可验证的项目能力和完整的知识结构</strong>，但不会自动变成 5 年经验。现实做法是：投“1~3 年”或“经验不限”的同方向岗位，用项目弥补年限；或者在面试中用“我做过完整链路”证明上手速度。不要编造工作年限——背调很容易查。</p>
+        </div>
+
+        <h2 id="resume">简历：把“做过”写成“有价值”</h2>
+        <p>大多数人的项目描述是“使用 LightGBM 进行负荷预测，MAPE 达到 1.78%”。这句话的问题不是错，而是<strong>没有信息量</strong>：为什么做、难在哪、你做了什么取舍，全都没有。</p>
+
+        <div class="grid-2">
+          <div class="card tight">
+            <h4 style="color:#b91c1c">改前（常见写法）</h4>
+            <p style="font-size:14px">使用 Python、Pandas、LightGBM 完成区域负荷预测，MAPE 1.78%。使用孤立森林做异常检测，F1 0.956。使用线性规划做储能调度，节省电费 4.99%。</p>
+          </div>
+          <div class="card tight">
+            <h4 style="color:#15803d">改后（有背景、有动作、有取舍）</h4>
+            <p style="font-size:14px">面向日前 24 小时负荷申报场景，基于 2 年 15 分钟数据构建 25 维时序特征（滞后/滚动/日历/气象/步长），LightGBM 多步长建模，测试集 MAPE 1.78%（昨日同期基线 5.30%）；通过消融定位气象与日历为主贡献，并识别“昨日同期特征冗余”问题。封装 FastAPI 推理服务，加入特征列校验与 T+1 精度回算。</p>
+          </div>
+        </div>
+
+        <h3>可复用的写法模板</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">项目 bullet 模板</span><button class="copy">复制</button></div>
+          <pre><span class="c">[业务背景] + [你做的事] + [量化结果] + [关键取舍/发现]</span>
+
+示例 1（预测）
+面向日前购电申报，构建 2 年 15 分钟负荷的清洗与特征链路，
+用 LightGBM 做 24 步长预测，测试集 MAPE 1.78%（基线 5.30%）；
+消融发现气象缺失会使误差上升 25%，昨日同期特征存在冗余。
+
+示例 2（异常）
+针对 40 测点园区，设计同业基线 + 规则 + 孤立森林的日粒度异常识别，
+在 1200 测点日上精确率 0.947、召回 0.964；
+定位并修复“异常期污染基线”导致的连续误报。
+
+示例 3（优化）
+以 15 分钟粒度构建含 SOC、功率、需量约束的线性规划调度，
+60 天电费下降 4.99%（14.75 万元），平均削峰 87.1 kW；
+同时指出往返效率导致购电量与碳排上升的取舍。</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">三个简历雷区</b>
+          <p>① <strong>只写工具不写问题</strong>：“熟练使用 Pandas”没有说服力，写“用 Pandas 处理 23 万行长表，完成去重、缺口修补与质量打分”才有。<br>② <strong>数字没有口径</strong>：“准确率 95%”要说明是什么指标、在什么数据上、怎么切分。<br>③ <strong>把仿真写成生产</strong>：可以写“仿真项目”，但不能写“负责某电网系统”。一问细节就露馅。</p>
+        </div>
+
+        <h2 id="story">5 分钟演示：照着这个顺序讲</h2>
+        <p>面试官最多给你 5~8 分钟讲一个项目。下面是一个经过压缩的脚本，每一段都有明确目的。</p>
+
+        <div class="timeline">
+          <div class="tl-row"><div class="tl-week">0:00</div><div class="tl-body"><h4>背景与目标（40 秒）</h4><p>“园区每天要在前一天中午申报次日用电计划，报高了要多买备用，报低了要考核。目标是日前 24 小时逐时预测，验收线是 MAPE 2.5% 以内、且明显优于昨日同期基线。”</p></div></div>
+          <div class="tl-row"><div class="tl-week">0:40</div><div class="tl-body"><h4>数据与难点（50 秒）</h4><p>“2 年 15 分钟数据，7 万行原始；里面有缺失、重复、尖峰、归零。难点不是模型，是清洗和防泄漏：未来温度只能用预报，滚动窗口不能包含未来点。”</p></div></div>
+          <div class="tl-row"><div class="tl-week">1:30</div><div class="tl-body"><h4>方法（70 秒）</h4><p>“五类特征：日历、滞后、滚动统计、气象、horizon。单模型展开 24 个步长，LightGBM + 早停。基线选了昨日同期、上周同期和 Ridge，用来证明增量来自模型而不是数据本身好预测。”</p></div></div>
+          <div class="tl-row"><div class="tl-week">2:40</div><div class="tl-body"><h4>结果（60 秒）</h4><p>“测试集 MAPE 1.78%，基线 5.30%，Ridge 3.00%。峰段 1.51%、谷段 2.01%。分步长几乎不衰减，说明模型不是靠最近值硬撑。”</p></div></div>
+          <div class="tl-row"><div class="tl-week">3:40</div><div class="tl-body"><h4>取舍与局限（50 秒）</h4><p>“气象用了实测值，相当于完美预报，上线要打 0.3~1 个点的折扣；10 月含国庆误差最高，因为节假日样本少。下一步会做节假日加权和分位数预测。”</p></div></div>
+          <div class="tl-row"><div class="tl-week">4:30</div><div class="tl-body"><h4>工程化（30 秒）</h4><p>“模型和特征名一起保存，FastAPI 启动时加载，推理前校验列顺序；T+1 回算 MAPE，连续 3 天劣化触发复查。”</p></div></div>
+        </div>
+
+        <div class="callout how">
+          <b class="t">演示时打开什么</b>
+          <p>按这个顺序切窗口：① 一张“实际 vs 预测”的周图；② 指标表；③ 消融表；④ 代码里的特征构造片段；⑤ API 的 <code>/docs</code> 页面。不要一上来就滚代码，先用图建立信任，再用代码证明是你写的。</p>
+        </div>
+
+        <h2 id="qa">20 个高频追问</h2>
+        <p>按类别准备，每个答案控制在 60~90 秒。不要背全文，记住“结论 + 一个数字 + 一个取舍”。</p>
+
+        <h3>A. 业务与数据</h3>
+        <details class="qa" open>
+          <summary>1. 你怎么判断数据能不能用？</summary>
+          <div class="ans">看四件事：完整性（缺失率、连续缺失时长）、合理性（负值、越界、零值）、稳定性（卡死、跳变）、时效性（延迟）。先出质量报表，再决定哪些测点可以建模、哪些要先修采集。</div>
+        </details>
+        <details class="qa">
+          <summary>2. 缺失值为什么有时插值、有时不插？</summary>
+          <div class="ans">短缺口（≤2 小时）插值可信；长缺口插值等于编数据，会掩盖采集故障，也会让质量分虚高。项目二里超过 2 小时就保留为空，让质量分体现问题。</div>
+        </details>
+        <details class="qa">
+          <summary>3. 峰平谷电价和需量电费有什么区别？</summary>
+          <div class="ans">电度电费按 kWh 收，峰谷单价不同；需量电费按当月最大需量（kW）收基本费，跟你用多少度无关。所以“削峰”本身就能省钱，哪怕总电量不变。</div>
+        </details>
+        <details class="qa">
+          <summary>4. 什么是 SOC？为什么限制在 10%~90%？</summary>
+          <div class="ans">SOC 是储能荷电状态。限制上下限是为了防止过充过放、延长寿命；同时留一定余量应对预测误差和调度指令。首末都回到 50%，是为了让策略可以日复一日循环。</div>
+        </details>
+        <details class="qa">
+          <summary>5. 需求响应是什么？</summary>
+          <div class="ans">电网在高峰或紧张时段，通过价格或补贴引导用户主动削减负荷。对园区来说，是“少用一点电换补偿”；对算法来说，是预测和调度里要额外考虑的约束与收益项。</div>
+        </details>
+
+        <h3>B. 建模</h3>
+        <details class="qa">
+          <summary>6. 为什么 MAPE 在夜间更高？</summary>
+          <div class="ans">夜间负荷基数小，同样的绝对误差除以更小的分母，百分比就被放大。项目里 05:00 是 2.18%，11:00 是 1.38%。所以报指标要同时给 MAE，避免只看百分比造成误判。</div>
+        </details>
+        <details class="qa">
+          <summary>7. 怎么做时间序列的交叉验证？</summary>
+          <div class="ans">不能随机打乱。用滚动/扩展窗口，按时间切分，确保验证集永远在训练集之后。项目里用“训练 2024-07 前、验证 7~9 月、测试 10~12 月”的一次性时间切分，简单且贴合上线场景。</div>
+        </details>
+        <details class="qa">
+          <summary>8. 你的特征有没有泄漏？怎么检查？</summary>
+          <div class="ans">五个自检：origin 时刻是否存在、滚动窗口是否含未来点、标准化是否只用训练集、切分单位是否是起点、缺失填充是否用了后向值。项目里统一用 <code>shift(1).rolling()</code>，气象只允许用预报。</div>
+        </details>
+        <details class="qa">
+          <summary>9. 为什么树模型不需要标准化？</summary>
+          <div class="ans">树模型按特征取值排序找分裂点，单调变换不改变分裂结果，所以量纲不影响。但线性模型、KNN、神经网络需要标准化。Ridge 基线里我用了 StandardScaler 管道，且只在训练集 fit。</div>
+        </details>
+        <details class="qa">
+          <summary>10. 消融实验怎么做才有说服力？</summary>
+          <div class="ans">固定数据切分、超参、随机种子，只改特征集合；每次只删一类，不要一次删多个；同时报 MAPE 和 MAE；最后说明结论的适用范围。项目里 no_weather 上升 25%，说明气象是刚需；no_recent_day 反而更好，说明存在冗余。</div>
+        </details>
+        <details class="qa">
+          <summary>11. 异常检测没有标签，怎么调阈值？</summary>
+          <div class="ans">用一段“相对干净”的校准期，让正常日只有 1%~3% 越界；再用评估期验证召回和告警率。项目里前 24 天校准，评估从第 30 天开始，中间留缓冲。上线后靠人工确认率持续调整。</div>
+        </details>
+        <details class="qa">
+          <summary>12. 精确率和召回率，业务更看重哪个？</summary>
+          <div class="ans">看场景。窃电稽核看重召回（漏了就是钱），但告警太多没人处理也会失效；数据质量类更看重精确率（误报会浪费运维）。所以要做分级：高严重度保召回，低严重度保精确。</div>
+        </details>
+
+        <h3>C. 工程与上线</h3>
+        <details class="qa">
+          <summary>13. 模型怎么部署？</summary>
+          <div class="ans">FastAPI 封装，启动时加载模型与特征列表，请求时造特征并推理；Docker 打包，锁依赖版本；<code>/health</code> 探活；日志记录版本、输入摘要、耗时。小规模用 systemd 就够，不必强上 K8s。</div>
+        </details>
+        <details class="qa">
+          <summary>14. 线上精度怎么监控？</summary>
+          <div class="ans">T+1 用真实值回算滚动 7 天 MAPE，分小时、分测点看偏差；特征 PSI 看漂移；业务侧看购电偏差、需量超标次数。连续 3 天劣化 50% 触发复查。</div>
+        </details>
+        <details class="qa">
+          <summary>15. 模型版本怎么管理？</summary>
+          <div class="ans">模型文件、特征列表、超参、训练数据范围、指标、代码 commit 一起归档，形成版本号；线上保留上一版可回滚；新模型先影子模式对比，再灰度。</div>
+        </details>
+        <details class="qa">
+          <summary>16. 如果线上预测全变成同一个值，你怎么查？</summary>
+          <div class="ans">先看输入：是不是某列全空被填成常数；再看特征矩阵列顺序；然后回放同一条请求到离线环境比对；最后查模型加载是否成功、版本是否被覆盖。日志里要能拿到输入摘要，否则只能猜。</div>
+        </details>
+        <details class="qa">
+          <summary>17. 时序数据库为什么不用 MySQL？</summary>
+          <div class="ans">时序数据写多读少、按时间范围查询、需要降采样和保留策略。InfluxDB/TimescaleDB 针对这些优化，压缩率高、范围查询快。MySQL 也能存，但数据量上来后写入和聚合会成为瓶颈。</div>
+        </details>
+
+        <h3>D. 行为与协作</h3>
+        <details class="qa">
+          <summary>18. 业务方不认可你的告警，怎么办？</summary>
+          <div class="ans">先看误报原因，把告警拆成“数据质量 / 行为异常 / 设备故障”三类分别沟通；再让对方参与阈值制定；最后用确认率、追回金额说话。不要用 F1 去说服业务，他们不关心。</div>
+        </details>
+        <details class="qa">
+          <summary>19. 项目延期或数据不到位，你怎么处理？</summary>
+          <div class="ans">先降级交付：没有标签就先上规则、没有历史就先做质量监控；把“能做什么、不能做什么、需要什么”写成清单对齐。最忌讳闷头等数据，最后一天才说做不了。</div>
+        </details>
+        <details class="qa">
+          <summary>20. 你未来一年想补什么？</summary>
+          <div class="ans">给一个具体、可验证的答案，比如“补齐时序数据库的实战（InfluxDB 写入与降采样）、把预测从点估计扩展到分位数区间、深入一次真实的需量控制闭环”。不要说“全面提升”。</div>
+        </details>
+
+        <h2 id="onboard">入职 90 天：从“能跑”到“被信任”</h2>
+        <div class="timeline">
+          <div class="tl-row"><div class="tl-week">D1-30</div><div class="tl-body"><h4>摸清数据与业务</h4><p>画出数据链路：表从哪来、谁维护、更新频率、字段含义。找 3 个一线用户聊：他们现在怎么做决策、最痛的是什么。跑通一条“取数 → 清洗 → 出图”的最小闭环，别急着建模。</p></div></div>
+          <div class="tl-row"><div class="tl-week">D31-60</div><div class="tl-body"><h4>先交付一个“小但有用”的东西</h4><p>比如一张每日负荷与异常看板、一个质量监控脚本、一个能解释的规则告警。目标是让业务开始用，而不是追求指标。有了真实反馈，再决定模型往哪走。</p></div></div>
+          <div class="tl-row"><div class="tl-week">D61-90</div><div class="tl-body"><h4>把模型接进流程</h4><p>预测接入申报/调度，异常接入工单，服务接入平台。补齐监控、版本、回滚。最后写一份“现状 + 收益 + 风险 + 下一步”的复盘，主动汇报。</p></div></div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">新人最容易犯的三个错</b>
+          <p>① <strong>一上来搞大模型</strong>：数据没通、业务没对齐，模型再好也没人用。<br>② <strong>只和算法同事沟通</strong>：不去现场、不问运维，做出来的东西不符合流程。<br>③ <strong>不写文档</strong>：你休假时没人能接手，信任度直接归零。每做一个东西，留一页说明：目的、输入、输出、怎么重启、怎么回滚。</p>
+        </div>
+
+        <h2 id="plan">最后 14 天冲刺计划</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">时间</th><th style="width:40%">做什么</th><th>验收</th></tr></thead>
+            <tbody>
+              <tr><td>D1-3</td><td>把两个项目从零重跑一遍，记录每一步耗时与报错</td><td>能不看教程独立跑通</td></tr>
+              <tr><td>D4-6</td><td>手画两张图：项目一特征链路、项目二业务闭环</td><td>能在白板上 3 分钟讲清</td></tr>
+              <tr><td>D7-8</td><td>写简历项目段落，找 2 个人挑刺</td><td>每个 bullet 都有数字和取舍</td></tr>
+              <tr><td>D9-11</td><td>对着 20 个追问自问自答，录音回听</td><td>每个回答 ≤90 秒，不卡壳</td></tr>
+              <tr><td>D12-13</td><td>录 5 分钟演示视频</td><td>画面能看清图，讲述不超时</td></tr>
+              <tr><td>D14</td><td>模拟面试：让朋友扮演面试官，随机抽 8 题</td><td>能接住至少 6 题，且不编造</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="myth">五个必须纠正的认知</h2>
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>“模型越复杂越厉害”</h4>
+            <p>面试官更在意你为什么选它、基线是多少、失败模式是什么。一个讲清楚的 LightGBM，胜过十个调不动的 Transformer。</p>
+          </div>
+          <div class="card tight">
+            <h4>“指标越高越好”</h4>
+            <p>脱离数据边界的高指标会被怀疑。主动说明“仿真、信号强、完美气象”，反而增加可信度。</p>
+          </div>
+          <div class="card tight">
+            <h4>“业务知识可以入职再学”</h4>
+            <p>EMS、需量、SOC、峰平谷是面试的入门门槛。不懂这些，算法讲得再好也像“外挂”。</p>
+          </div>
+          <div class="card tight">
+            <h4>“项目必须高大上”</h4>
+            <p>完整的小项目 > 半途的大项目。能复现、能解释、能讲取舍，就是好项目。</p>
+          </div>
+          <div class="card tight">
+            <h4>“承认局限会减分”</h4>
+            <p>恰恰相反。能说清“哪里不行、为什么、怎么改”，是专业度的直接体现。面试官最怕的是不知道自己不知道。</p>
+          </div>
+          <div class="card tight">
+            <h4>“学会工具就会干活”</h4>
+            <p>工具只是入场券。真正决定你能否干活的是：数据能不能通、业务认不认、线上稳不稳。</p>
+          </div>
+        </div>
+
+        <h2 id="resource">继续深入的方向</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">方向</th><th style="width:36%">具体做什么</th><th>推荐起点</th></tr></thead>
+            <tbody>
+              <tr><td>公开负荷数据</td><td>用真实数据复现项目一，验证结论是否还成立</td><td>PJM、ENTSO-E、UCI Electricity Load Diagrams</td></tr>
+              <tr><td>时序数据库</td><td>把 15 分钟数据写入 InfluxDB，做降采样与范围查询</td><td>InfluxDB 官方文档、TimescaleDB 教程</td></tr>
+              <tr><td>概率预测</td><td>给预测加 P10/P90 区间，用于备用容量决策</td><td>LightGBM quantile objective</td></tr>
+              <tr><td>优化调度</td><td>把确定性 LP 扩展为滚动优化、考虑预测误差</td><td>SciPy linprog、PuLP、OR-Tools</td></tr>
+              <tr><td>MLOps</td><td>模型注册、实验跟踪、自动回滚</td><td>MLflow、DVC</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="final">结课自测</h2>
+        <ul class="checklist">
+          <li>能在 5 分钟内讲完一个项目，包含背景、难点、方法、结果、局限。</li>
+          <li>能对着图解释 MAPE 1.78% 是怎么来的，以及为什么不能直接套到真实城市。</li>
+          <li>能说清同业基线为什么能抵消天气共因，并举一个反例。</li>
+          <li>能写出一个可回滚的模型版本目录结构。</li>
+          <li>能解释储能套利为什么可能增加购电量与碳排。</li>
+          <li>能列出上线后要监控的四类指标，以及各自的阈值动作。</li>
+          <li>能诚实回答“这个项目你独立完成了多少”。</li>
+        </ul>
+
+        <div class="callout quote">
+          <p>“从 0 到能干活”的标志，不是你会多少模型，而是：给你一份脏数据和一个模糊需求，你能自己拆出任务、跑通链路、说清结果、承认局限，并让它稳定运行。</p>
+        </div>
+
+        <hr>
+        <p style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px">
+          <a class="btn-ghost" style="text-decoration:none" href="08-project-ems.html">← 项目二：园区 EMS</a>
+          <a class="btn-ghost" style="text-decoration:none" href="index.html">回到课程总览 →</a>
+        </p>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+    <footer class="site-foot">能源数据与算法工程师实战教程 · 第 9 章</footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

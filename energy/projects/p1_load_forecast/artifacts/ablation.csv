@@ -1,0 +1,7 @@
+variant,n_features,mape,mae
+full,25,1.78,5.78
+no_weather,21,2.22,7.24
+no_recent_day,24,1.66,5.38
+no_lag_rolling,16,1.74,5.63
+calendar_only,10,2.1,6.82
+no_horizon,24,1.79,5.8

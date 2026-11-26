@@ -1,0 +1,85 @@
+{
+  "data": {
+    "rows": 24192,
+    "services": 12,
+    "days": 7,
+    "freq": "5min",
+    "faults": 14,
+    "anomaly_ratio": 0.72,
+    "train_rows": 13824,
+    "test_rows": 10368
+  },
+  "methods": {
+    "3σ 规则": {
+      "precision": 0.4519,
+      "recall": 0.7015,
+      "f1": 0.5497,
+      "pa_precision": 0.4519,
+      "pa_recall": 0.7015,
+      "pa_f1": 0.5497,
+      "auc": 0.8418,
+      "false_alarms_per_day": 19.0,
+      "detected_segments": 93.0
+    },
+    "Isolation Forest": {
+      "precision": 0.6863,
+      "recall": 0.5224,
+      "f1": 0.5932,
+      "pa_precision": 0.7193,
+      "pa_recall": 0.6119,
+      "pa_f1": 0.6613,
+      "auc": 0.9239,
+      "false_alarms_per_day": 5.0,
+      "detected_segments": 46.0
+    },
+    "LSTM-AE": {
+      "precision": 0.4898,
+      "recall": 0.3582,
+      "f1": 0.4138,
+      "pa_precision": 0.5098,
+      "pa_recall": 0.3881,
+      "pa_f1": 0.4407,
+      "auc": 0.7679,
+      "false_alarms_per_day": 8.3,
+      "detected_segments": 46.0
+    },
+    "投票融合": {
+      "precision": 0.8478,
+      "recall": 0.5821,
+      "f1": 0.6903,
+      "pa_precision": 0.86,
+      "pa_recall": 0.6418,
+      "pa_f1": 0.735,
+      "auc": 0.9331,
+      "false_alarms_per_day": 2.3,
+      "detected_segments": 40.0
+    }
+  },
+  "detection_delay_median_min": 0.0,
+  "alerts": {
+    "raw": 217,
+    "dedup": 87,
+    "suppressed": 19,
+    "kept": 68
+  },
+  "incidents": {
+    "recall": 1.0,
+    "root_top1": 1.0,
+    "matched": 14,
+    "incidents": 16,
+    "events": 14
+  },
+  "logs": {
+    "total": 40000,
+    "templates": 157,
+    "top1_ratio": 0.064
+  },
+  "capacity": {
+    "service": "order",
+    "mae": 1.23,
+    "mape": 0.93,
+    "horizon_h": 24,
+    "capacity_threshold": 239.2
+  },
+  "runtime_sec": 70.3
+}

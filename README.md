@@ -9,6 +9,14 @@
 
 或克隆到本地后双击 `index.html`，纯静态、无任何外部依赖，离线可读。
 
+本仓库还收录了另外两个同风格的教程站（都是独立可读的完整站点）：
+
+| 教程 | 在线阅读 | 本地入口 |
+|------|----------|----------|
+| **搜广推算法：从 0 到能干活**（主站） | [souguangtui](https://liuliuqiu378.github.io/souguangtui/) | `index.html` |
+| **能源数据与算法工程师实战教程** | [energy](https://liuliuqiu378.github.io/souguangtui/energy/) | `energy/index.html` |
+| **AIOps 实战手册**（基础篇 / 进阶篇 / 项目 / 附录题库） | [aiops](https://liuliuqiu378.github.io/souguangtui/aiops/) | `aiops/index.html` |
+
 ## 章节目录（9 章 + 2 项目 + 2 拓展）
 
 | # | 页面 | 内容 |
@@ -58,6 +66,8 @@ srr-tutorial/
 ├── industry.html         # T1 行业与商业全景
 ├── advanced.html         # T2 进阶模型专题
 ├── interview.html        # 面试冲刺
+├── energy/               # 子站：能源数据与算法工程师实战教程
+├── aiops/                # 子站：AIOps 实战手册
 ├── assets/               # 公共样式与脚本（无 CDN、无外链）
 ├── data/                 # 仿真数据与指标 JSON
 └── scripts/              # 数据生成脚本

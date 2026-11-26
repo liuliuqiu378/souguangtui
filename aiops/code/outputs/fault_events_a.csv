@@ -1,0 +1,15 @@
+﻿id,start,end,service,service_cn,type,type_desc,duration_min,propagated_to
+INC-001,2026-11-04 10:00:00,2026-11-04 10:25:00,payment,支付服务,error_burst,错误率飙升（发布缺陷 / 依赖异常）,25,[]
+INC-002,2026-11-04 18:30:00,2026-11-04 18:50:00,order,订单服务,cpu_surge,CPU 突增（批处理抢占 / 死循环）,20,"['inventory', 'mysql', 'notification', 'payment']"
+INC-003,2026-11-05 06:00:00,2026-11-05 06:45:00,mysql,MySQL主库,latency_spike,慢查询 / 下游阻塞导致 P99 飙升,45,[]
+INC-004,2026-11-05 18:00:00,2026-11-05 19:00:00,redis,Redis集群,mem_leak,内存泄漏（对象未释放，阶梯上涨）,60,[]
+INC-005,2026-11-06 07:00:00,2026-11-06 07:15:00,gateway,API网关,network,网络抖动（重传、跨可用区延迟）,15,"['auth', 'cart', 'inventory', 'mysql', 'notification', 'order', 'payment', 'product', 'recommend', 'redis', 'search']"
+INC-006,2026-11-06 18:00:00,2026-11-06 18:20:00,inventory,库存服务,service_down,服务不可用（进程崩溃 / 实例挂掉）,20,[]
+INC-007,2026-11-07 06:00:00,2026-11-07 06:30:00,search,搜索服务,latency_spike,慢查询 / 下游阻塞导致 P99 飙升,30,['mysql']
+INC-008,2026-11-07 19:00:00,2026-11-07 19:25:00,auth,认证服务,error_burst,错误率飙升（发布缺陷 / 依赖异常）,25,['redis']
+INC-009,2026-11-08 07:00:00,2026-11-08 07:50:00,product,商品服务,mem_leak,内存泄漏（对象未释放，阶梯上涨）,50,"['mysql', 'redis']"
+INC-010,2026-11-08 19:00:00,2026-11-08 19:20:00,notification,通知服务,cpu_surge,CPU 突增（批处理抢占 / 死循环）,20,[]
+INC-011,2026-11-09 07:00:00,2026-11-09 07:30:00,recommend,推荐服务,latency_spike,慢查询 / 下游阻塞导致 P99 飙升,30,['redis']
+INC-012,2026-11-09 19:00:00,2026-11-09 19:18:00,cart,购物车,service_down,服务不可用（进程崩溃 / 实例挂掉）,18,['redis']
+INC-013,2026-11-10 06:00:00,2026-11-10 06:40:00,mysql,MySQL主库,cpu_surge,CPU 突增（批处理抢占 / 死循环）,40,[]
+INC-014,2026-11-10 16:00:00,2026-11-10 16:25:00,payment,支付服务,network,网络抖动（重传、跨可用区延迟）,25,[]

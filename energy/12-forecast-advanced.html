@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>专题 B3 · 预测算法进阶 | 能源数据与算法工程师</title>
+<meta name="description" content="点预测与概率预测、多步策略、指标体系、ARIMA/Prophet、LightGBM/XGBoost/CatBoost、Optuna 调参、深度学习、分位数回归、Conformal 预测、层级对账、漂移与重训练。">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="mobile-toggle" id="menuBtn" aria-label="菜单">☰</button>
+      <div class="breadcrumb">专题 B3 · <b>预测算法进阶</b></div>
+      <div class="top-actions">
+        <button class="btn-ghost" onclick="window.print()">打印 / 存 PDF</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <main class="content">
+        <div class="page-head">
+          <div class="kicker">SPECIAL B3 · FORECASTING II</div>
+          <h1>预测算法进阶：从“跑出 MAPE”到“能支撑决策”</h1>
+          <p class="lead">第 4 章解决了“怎么做一个能用的预测”。这一章补三件更专业的事：<strong>怎么定义好任务、怎么证明模型真的更好、怎么让预测带着不确定性进入决策</strong>。面试里区分“会用库”和“懂预测”的，通常就是这三件事。</p>
+          <div class="page-meta">
+            <span>预计 100 分钟</span>
+            <span>前置：第 4 章</span>
+            <span>产出：能选型、能调参、能给出区间</span>
+            <span>性质：算法深度</span>
+          </div>
+        </div>
+
+        <div class="callout what">
+          <b class="t">先校准一个观念：预测不是终点</b>
+          <p>业务真正需要的是<strong>决策</strong>：买多少电、充多少电、报多少容量、要不要派人核查。点预测只回答“最可能多少”，概率预测回答“有多大可能超过某个值”。储能、需量、需求响应这些场景，后者往往比前者更有价值。</p>
+        </div>
+
+        <h2 id="taxonomy">先把任务说清楚：预测问题的六个维度</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">维度</th><th style="width:36%">选项</th><th>对项目的影响</th></tr></thead>
+            <tbody>
+              <tr><td><strong>输出形式</strong></td><td>点预测 / 区间 / 概率分布</td><td>决定损失函数与评估指标</td></tr>
+              <tr><td><strong>步长</strong></td><td>单步 / 多步（24 点、96 点）</td><td>多步要考虑误差累积或直接多输出</td></tr>
+              <tr><td><strong>多步策略</strong></td><td>递归 / 直接 / 多输入多输出</td><td>递归简单但误差累积；直接多模型成本高</td></tr>
+              <tr><td><strong>建模范围</strong></td><td>单序列局部模型 / 多序列全局模型</td><td>全局模型能共享规律，冷启动测点更友好</td></tr>
+              <tr><td><strong>层级</strong></td><td>单层 / 分层（园区→楼栋→测点）</td><td>需要一致性对账，否则加总对不上</td></tr>
+              <tr><td><strong>更新方式</strong></td><td>离线批量 / 定时重训 / 在线学习</td><td>决定工程复杂度与漂移响应速度</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>项目一的选择是：<strong>点预测、24 步、直接多输出（一个模型 + horizon 特征）、全局单模型、单层、离线批量</strong>。这个组合不是唯一正确答案，但它用最低的工程复杂度覆盖了“日前 24 点”这个需求。面试时能解释“为什么不选另外几种”，比单纯说“我用了 LightGBM”更有分量。</p>
+
+        <div class="callout field">
+          <b class="t">递归 vs 直接：一句话判断</b>
+          <p>如果你能接受“训练一个模型、预测时滚动 24 次”，选递归；如果误差累积不可接受、且样本足够，选直接多输出。项目一选直接，是因为 24 个 horizon 可以共享同一套特征，且避免了“第 24 步用到第 23 步预测值”的误差累积。</p>
+        </div>
+
+        <h2 id="metric">指标体系：MAPE 不是万能的</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">指标</th><th style="width:30%">定义</th><th style="width:26%">适合</th><th>陷阱</th></tr></thead>
+            <tbody>
+              <tr><td><strong>MAE</strong></td><td>平均绝对误差，单位同负荷</td><td>业务解释直观</td><td>大负荷测点主导全局指标</td></tr>
+              <tr><td><strong>RMSE</strong></td><td>均方根误差，惩罚大误差</td><td>关注极端偏差</td><td>对离群值敏感</td></tr>
+              <tr><td><strong>MAPE</strong></td><td>平均绝对百分比误差</td><td>跨测点可比</td><td>真实值接近 0 时爆炸；低谷不适用</td></tr>
+              <tr><td><strong>sMAPE</strong></td><td>对称 MAPE</td><td>缓解分母过小</td><td>仍有界但不直观</td></tr>
+              <tr><td><strong>WAPE</strong></td><td>Σ|误差| / Σ|真实值|</td><td>聚合口径、含零值</td><td>会被大值主导</td></tr>
+              <tr><td><strong>MASE</strong></td><td>相对朴素基线的 MAE</td><td>跨数据集比较</td><td>需要定义季节性基线</td></tr>
+              <tr><td><strong>Pinball</strong></td><td>分位数损失</td><td>概率预测</td><td>不同分位数不可直接平均</td></tr>
+              <tr><td><strong>Coverage</strong></td><td>真实值落在区间内的比例</td><td>区间质量</td><td>区间越宽越容易覆盖，要同时看宽度</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：用 MAPE 评估夜间低谷</b>
+          <p>夜间负荷可能只有峰值的 30%，同样的绝对误差在夜间会放大成很大的百分比。项目一里谷段 MAPE 2.01%、峰段 1.51%，不是模型在谷段更差，而是分母更小。正确做法是<strong>分时段报告</strong>，并在决策场景改用 MAE 或 WAPE。</p>
+        </div>
+
+        <h3>基线不是形式：它决定了你的“提升”是否可信</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">基线</th><th style="width:36%">定义</th><th>什么时候必须报</th></tr></thead>
+            <tbody>
+              <tr><td><strong>昨日同期</strong></td><td>用昨天同一时刻的值</td><td>所有短期负荷预测</td></tr>
+              <tr><td><strong>上周同期</strong></td><td>用上周同一天同一时刻</td><td>周周期明显时</td></tr>
+              <tr><td><strong>季节朴素</strong></td><td>用上一个相同季节周期的值</td><td>日/周/年周期</td></tr>
+              <tr><td><strong>移动平均</strong></td><td>最近 k 个同时刻点平均</td><td>波动大的场景</td></tr>
+              <tr><td><strong>线性回归</strong></td><td>少量特征的线性模型</td><td>验证特征是否真的有用</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="classical">传统方法：什么时候它们仍然是最优解</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">方法</th><th style="width:34%">原理</th><th>适用 / 不适用</th></tr></thead>
+            <tbody>
+              <tr><td><strong>ARIMA</strong></td><td>用自回归、差分、移动平均描述序列</td><td>单序列、平稳化后规律明显；难吃多源特征</td></tr>
+              <tr><td><strong>SARIMAX</strong></td><td>ARIMA + 季节项 + 外生变量</td><td>有温度等外生变量、样本不长时很稳</td></tr>
+              <tr><td><strong>指数平滑（ETS）</strong></td><td>对近期观测加权，含趋势/季节</td><td>快速基线、平滑序列；对突变响应慢</td></tr>
+              <tr><td><strong>Prophet</strong></td><td>趋势 + 季节 + 节假日分解</td><td>可解释、上手快；对精细气象与突变弱</td></tr>
+              <tr><td><strong>Theta</strong></td><td>对序列做 theta 变换后外推</td><td>M3/M4 竞赛表现好，单变量基线强</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>不要因为“树模型更强”就否定传统方法。它们的价值在于：<strong>样本少、可解释性要求高、需要统计检验、要快速给业务一个基线</strong>。面试被问“为什么不用 ARIMA”，正确回答是“我跑过，作为基线 MAPE 是多少；但本任务有多源特征和 24 步输出，树模型更合适”，而不是“ARIMA 过时了”。</p>
+
+        <h2 id="gbdt">树模型进阶：三个容易被忽略的细节</h2>
+        <h3>① 目标变换</h3>
+        <p>负荷右偏、峰值很大时，对目标做 <code>log1p</code> 再训练，可以减小大值对损失的支配。但要注意：反变换后会有偏差（<code>exp</code> 是凸函数），需要做偏差修正，或者干脆用 MAE/Huber 这类稳健损失。</p>
+
+        <h3>② 类别特征</h3>
+        <p>测点 ID、类型、楼栋这些类别特征，LightGBM/CatBoost 可以直接处理；XGBoost 需要编码。多测点全局模型里，类别特征往往是“让一个模型适配不同曲线”的关键。</p>
+
+        <h3>③ 单调约束</h3>
+        <p>如果业务上确定“温度越高、制冷负荷越大”，可以给温度特征加单调约束，减少反直觉的预测。代价是模型灵活性下降，需要验证是否真的单调。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:14%">模型</th><th style="width:32%">特点</th><th>实践建议</th></tr></thead>
+            <tbody>
+              <tr><td><strong>LightGBM</strong></td><td>训练快、内存省、叶生长策略</td><td>中小数据首选，调参成本低</td></tr>
+              <tr><td><strong>XGBoost</strong></td><td>生态成熟、正则化强</td><td>特征多、需要更稳的正则时</td></tr>
+              <tr><td><strong>CatBoost</strong></td><td>类别特征处理好、默认参数强</td><td>多测点、类别多、懒得调参时</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="tuning">调参：Optuna + 时间序列交叉验证</h2>
+        <p>网格搜索在 5 个以上超参时成本爆炸。用贝叶斯优化（Optuna）配合<strong>时间序列交叉验证</strong>，既省算力又能避免随机切分带来的泄漏。</p>
+
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">Optuna + TimeSeriesSplit（骨架）</span><button class="copy">复制</button></div>
+          <pre><span class="k">import</span> optuna
+<span class="k">from</span> sklearn.model_selection <span class="k">import</span> TimeSeriesSplit
+
+<span class="k">def</span> objective(trial):
+    params = {
+        <span class="s">"n_estimators"</span>: <span class="n">3000</span>,
+        <span class="s">"learning_rate"</span>: trial.suggest_float(<span class="s">"lr"</span>, <span class="n">0.01</span>, <span class="n">0.1</span>, log=<span class="k">True</span>),
+        <span class="s">"num_leaves"</span>: trial.suggest_int(<span class="s">"leaves"</span>, <span class="n">31</span>, <span class="n">255</span>),
+        <span class="s">"min_child_samples"</span>: trial.suggest_int(<span class="s">"mcs"</span>, <span class="n">10</span>, <span class="n">80</span>),
+        <span class="s">"subsample"</span>: trial.suggest_float(<span class="s">"sub"</span>, <span class="n">0.6</span>, <span class="n">1.0</span>),
+        <span class="s">"colsample_bytree"</span>: trial.suggest_float(<span class="s">"col"</span>, <span class="n">0.6</span>, <span class="n">1.0</span>),
+    }
+    scores = []
+    <span class="k">for</span> tr, va <span class="k">in</span> TimeSeriesSplit(n_splits=<span class="n">3</span>).split(X):
+        model = lgb.LGBMRegressor(**params)
+        model.fit(X.iloc[tr], y.iloc[tr], eval_set=[(X.iloc[va], y.iloc[va])],
+                  callbacks=[lgb.early_stopping(<span class="n">60</span>, verbose=<span class="k">False</span>)])
+        scores.append(mean_absolute_error(y.iloc[va], model.predict(X.iloc[va])))
+    <span class="k">return</span> sum(scores) / len(scores)
+
+study = optuna.create_study(direction=<span class="s">"minimize"</span>, sampler=optuna.samplers.TPESampler(seed=<span class="n">42</span>))
+study.optimize(objective, n_trials=<span class="n">30</span>)
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">两个调参陷阱</b>
+          <p>① <strong>用测试集调参</strong>：反复看测试集分数会过拟合测试集，最后上线崩。正确做法是训练/验证/测试三段，验证集调参，测试集只看一次。② <strong>早停轮数不稳定</strong>：不同随机种子下最佳迭代数可能差很多，导致模型容量不可控。可以固定树数，或用多折平均最佳轮数。</p>
+        </div>
+
+        <h2 id="deep">深度学习：什么时候值得上</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">模型</th><th style="width:30%">擅长</th><th>现实建议</th></tr></thead>
+            <tbody>
+              <tr><td><strong>LSTM/GRU</strong></td><td>序列依赖、长短期记忆</td><td>数据量中等时不一定赢 GBDT；调参成本高</td></tr>
+              <tr><td><strong>TCN</strong></td><td>因果卷积，训练并行</td><td>比 LSTM 稳，仍需要足够样本</td></tr>
+              <tr><td><strong>Seq2Seq</strong></td><td>多步输出、编码器-解码器</td><td>适合 96 点等多步任务</td></tr>
+              <tr><td><strong>Transformer / Informer</strong></td><td>长序列、注意力</td><td>数据大、算力足才值得；小数据易过拟合</td></tr>
+              <tr><td><strong>PatchTST</strong></td><td>把序列切 patch，降复杂度</td><td>长序列预测的实用选择</td></tr>
+              <tr><td><strong>TFT</strong></td><td>多变量 + 可解释注意力</td><td>需要概率输出、可解释性时</td></tr>
+              <tr><td><strong>N-BEATS / N-HiTS</strong></td><td>纯 MLP 结构，多步</td><td>单变量强基线，工程简单</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout field">
+          <b class="t">一句实话</b>
+          <p>在园区级、几十个测点、两年数据这个量级，<strong>调好的 LightGBM 往往不输深度学习</strong>，而且训练快、可解释、部署简单。深度学习的价值在“多序列、大数据、长历史、复杂多变量”场景。面试时不要为了显得高级硬上 LSTM，能说清“我试过，没赢，所以没用”反而加分。</p>
+        </div>
+
+        <h2 id="prob">概率预测：让预测带着“不确定”进入决策</h2>
+        <p>业务问题往往不是“明天用多少”，而是“明天有多大概率超过 2000 kW”。这时需要分位数预测或预测区间。</p>
+
+        <h3>方法一：分位数回归（Quantile LightGBM）</h3>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">同时训练 P10 / P50 / P90</span><button class="copy">复制</button></div>
+          <pre>models = {}
+<span class="k">for</span> q <span class="k">in</span> (<span class="n">0.1</span>, <span class="n">0.5</span>, <span class="n">0.9</span>):
+    m = lgb.LGBMRegressor(objective=<span class="s">"quantile"</span>, alpha=q,
+                          n_estimators=<span class="n">1500</span>, learning_rate=<span class="n">0.04</span>,
+                          num_leaves=<span class="n">96</span>)
+    m.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
+          callbacks=[lgb.early_stopping(<span class="n">60</span>, verbose=<span class="k">False</span>)])
+    models[q] = m
+
+lo, mid, hi = (models[q].predict(X_te) <span class="k">for</span> q <span class="k">in</span> (<span class="n">0.1</span>, <span class="n">0.5</span>, <span class="n">0.9</span>))
+<span class="c"># 注意：三个模型独立训练，可能出现 lo &gt; hi，需要后处理排序</span>
+</pre>
+        </div>
+
+        <h3>方法二：Conformal 预测（推荐先学）</h3>
+        <p>先用点模型得到预测，再用验证集的残差分位数构造区间。它不假设分布，覆盖率的解释性很强，工程上也好落地。</p>
+        <div class="code-box">
+          <div class="code-head"><span class="dot"></span><span class="name">Split Conformal 区间</span><button class="copy">复制</button></div>
+          <pre><span class="c"># 1) 在验证集上算绝对残差</span>
+resid = np.abs(y_val - model.predict(X_val))
+
+<span class="c"># 2) 取 90% 分位数作为区间半宽</span>
+q90 = np.quantile(resid, <span class="n">0.9</span>)
+
+<span class="c"># 3) 测试时输出 [pred - q90, pred + q90]</span>
+lo = pred - q90
+hi = pred + q90
+<span class="c"># 覆盖率应接近 90%；如果明显偏低，检查验证集是否与测试集同分布</span>
+</pre>
+        </div>
+
+        <div class="callout pit">
+          <b class="t">坑：分位数交叉</b>
+          <p>独立训练的分位数模型可能给出 P10 &gt; P90 的荒谬结果。解决：训练后做排序（<code>np.sort</code> 沿分位数轴），或用支持多分位数的联合模型，或用 conformal 方法绕开这个问题。</p>
+        </div>
+
+        <h2 id="hier">层级预测与对账：加总对不上怎么办</h2>
+        <p>园区总负荷 = 各楼栋之和，楼栋 = 各测点之和。如果分别预测，再加总，很可能对不上。这叫层级不一致。</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">方法</th><th style="width:34%">做法</th><th>特点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Bottom-up</strong></td><td>预测最底层，再向上加总</td><td>一致性好；底层噪声会累积</td></tr>
+              <tr><td><strong>Top-down</strong></td><td>预测顶层，再按历史比例拆分</td><td>稳定；忽略底层变化</td></tr>
+              <tr><td><strong>MinT / 最优对账</strong></td><td>各层独立预测后，用协方差做加权调整</td><td>理论上最优，实现复杂</td></tr>
+              <tr><td><strong>简单按比例调整</strong></td><td>先各自预测，再按顶层总量缩放</td><td>工程简单，效果常够用</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>项目二没有做层级预测（40 个测点各自独立），但如果你做的是“园区→楼栋→测点”，就必须处理这个问题。面试被问“总负荷和分项对不上怎么办”，能说出 MinT 或比例对账，就已经超过多数候选人。</p>
+
+        <h2 id="ensemble">组合、后处理与峰值修正</h2>
+        <div class="grid-2">
+          <div class="card tight">
+            <h4>组合预测</h4>
+            <p>多个模型取平均（简单平均、按验证集误差加权、堆叠）。组合通常能降低方差，但要保证各模型误差不完全相关，否则收益有限。</p>
+          </div>
+          <div class="card tight">
+            <h4>后处理</h4>
+            <p>偏差校正（整体偏低就加回均值偏差）、峰值修正（峰段单独建模或加惩罚）、负值截断、爬坡率限制。后处理要可解释、可回滚。</p>
+          </div>
+        </div>
+
+        <div class="callout field">
+          <b class="t">峰值修正要谨慎</b>
+          <p>业务最在意峰值，但专门给峰值加权容易过拟合。更稳的做法是：分时段建模、加入“是否峰段”特征、或用分位数 P90 作为保守估计。任何修正都要在验证集上验证，不能凭感觉调。</p>
+        </div>
+
+        <h2 id="drift">漂移与重训练：模型会过期</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:18%">漂移类型</th><th style="width:34%">表现</th><th>应对</th></tr></thead>
+            <tbody>
+              <tr><td><strong>数据漂移</strong></td><td>输入分布变了：新增测点、温度范围变化</td><td>监控输入统计，更新特征</td></tr>
+              <tr><td><strong>概念漂移</strong></td><td>同样的输入，输出关系变了：新产线、电价调整</td><td>重训练、加新特征</td></tr>
+              <tr><td><strong>标签延迟</strong></td><td>真实值晚到，精度指标滞后</td><td>用代理指标（如预测分布）先监控</td></tr>
+              <tr><td><strong>突发冲击</strong></td><td>疫情、限电、设备改造</td><td>人工干预 + 快速回滚</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout how">
+          <b class="t">重训练策略怎么定</b>
+          <p>固定周期（每周/每月）最简单；按漂移触发更省算力；两者结合最稳。关键是<strong>重训练也要走验证与灰度</strong>，不能自动覆盖线上模型。项目里没有实现自动重训练，但第 6 章给了监控指标与回滚流程，这是刻意保留的工程边界。</p>
+        </div>
+
+        <h2 id="pit">常见坑</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:34%">坑</th><th>后果</th><th>正确做法</th></tr></thead>
+            <tbody>
+              <tr><td>用随机切分评估时序</td><td>分数虚高，上线崩</td><td>按时间切分，必要时滚动验证</td></tr>
+              <tr><td>用测试集反复调参</td><td>测试集过拟合</td><td>训练/验证/测试三段，测试只用一次</td></tr>
+              <tr><td>只报 MAPE</td><td>低谷误差被放大，误导决策</td><td>分时段 + MAE/WAPE 一起报</td></tr>
+              <tr><td>忽略基线</td><td>无法证明模型有价值</td><td>至少报昨日同期</td></tr>
+              <tr><td>分位数不排序</td><td>区间上下界颠倒</td><td>排序或联合建模</td></tr>
+              <tr><td>层级不一致</td><td>总表与分项对不上</td><td>对账或 bottom-up</td></tr>
+              <tr><td>过早引入深度模型</td><td>成本高、效果不稳定</td><td>先 GBDT，再按收益决定</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="check">自测：能不能撑住追问</h2>
+        <ul class="checklist">
+          <li>能说清你的任务是“点/区间、单步/多步、递归/直接、局部/全局”。</li>
+          <li>能解释为什么 MAPE 在低谷会变大，以及你会补哪个指标。</li>
+          <li>能说出至少两个基线，并给出它们的分数。</li>
+          <li>能解释 Optuna 里为什么用 <code>TimeSeriesSplit</code> 而不是 KFold。</li>
+          <li>能写出一个 conformal 区间，并说明覆盖率怎么验证。</li>
+          <li>能解释层级预测为什么会对不上，以及两种对账方法。</li>
+          <li>能给出一个漂移监控指标和对应的重训练触发条件。</li>
+        </ul>
+
+        <div class="callout how">
+          <b class="t">下一步读什么</b>
+          <p>预测只是输入，真正省钱的是决策：<a href="13-optimize.html">专题 B4 · 优化与调度</a>。想把模型做成可靠系统，读 <a href="14-engineering.html">专题 B5 · 算法工程实践</a>。</p>
+        </div>
+      </main>
+      <aside class="toc-rail" id="toc"></aside>
+    </div>
+
+    <footer class="site-foot">
+      能源数据与算法工程师实战教程 · 专题 B3 · 数据与指标均可复现
+    </footer>
+  </div>
+</div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
