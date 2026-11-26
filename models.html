@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>召回与排序模型演进 · 搜广推：从 0 到能干活</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="models" data-title="召回与排序模型演进">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <section class="hero">
+        <h1>召回与排序模型演进：从 ItemCF 到 DIN，每个模型到底在补哪个窟窿</h1>
+        <p>这一章不讲"模型大全"。我按时间顺序把每个模型放回它诞生的现场：它出现时，
+          上一代模型在哪个环节卡住了？它用一句话解决了什么？代价又是什么？
+          读完你应该能对着一条日志说清楚：这个候选是第几路召回来的、被哪个模型打了多少分、为什么没排到前面。</p>
+        <div class="tags">
+          <span>第 02 章</span><span>召回 4 类方法</span><span>排序 9 代模型</span>
+          <span>3 张真实指标图</span><span>7 条常见误区</span>
+        </div>
+      </section>
+
+      <div class="callout">
+        <p><b>先把两个词钉死，后面就不会绕。</b></p>
+        <p><b>召回（retrieval）</b>：从几百万候选里，用便宜的方法快速捞出几百到几千个"可能相关"的，<b>目标是别漏</b>，不追求排得准。</p>
+        <p><b>排序（ranking）</b>：对这几百个候选，用贵的方法精确打分，<b>目标是排得准</b>，因为用户只看前几个。</p>
+        <p>一句话：召回决定<b>天花板</b>，排序决定<b>能不能摸到天花板</b>。后面所有模型，都是在这两个约束下做取舍。</p>
+        <p><b>还有一个容易混的词：</b>"召回率"（recall）是<b>评估指标</b>，衡量"该被找到的找到了多少"，和"召回层"是两回事。
+          本章说"三路召回"指链路，说"Recall@100 11.29%"指指标。</p>
+      </div>
+
+      <div class="toc">
+        <b>本章目录</b>
+        <ol>
+          <li><a href="#recall">召回层：先保证不漏</a></li>
+          <li><a href="#cf">协同过滤：共现矩阵与热度惩罚</a></li>
+          <li><a href="#vector">向量召回：双塔、采样与 ANN</a></li>
+          <li><a href="#rank">排序层：一部"补窟窿"的历史</a></li>
+          <li><a href="#din">DIN 与多任务：把行为和目标分开看</a></li>
+          <li><a href="#coarse">粗排与重排：被夹在中间的工程妥协</a></li>
+          <li><a href="#train">训练调优与离线在线鸿沟</a></li>
+          <li><a href="#real">用项目一的真实指标说话</a></li>
+          <li><a href="#myths">七条常见误区</a></li>
+          <li><a href="#recap">一页速记：六句话</a></li>
+          <li><a href="#quiz">自测：5 道题</a></li>
+        </ol>
+      </div>
+
+      <div class="callout tip">
+        <p><b>怎么读这一章（第一次读建议照这个顺序）。</b>第一遍只看三样东西：每个小节的标题、开头的"上一代卡在哪"、以及每节结尾的结论；公式先跳过，只需要知道它"输入什么、输出什么"。
+          第二遍再回来看公式和符号。卡住时先查下面的符号表，再查 <a href="interview.html#terms">术语速查</a>——<b>不要因为一个符号停下来。</b></p>
+      </div>
+
+      <h3>符号速查（看公式时随时回来查）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>符号</th><th>读法</th><th>含义</th><th>出现在哪</th></tr></thead>
+          <tbody>
+            <tr><td>x<sub>i</sub></td><td>"第 i 个特征"</td><td>一条样本的第 i 维输入值，比如年龄、品类编码</td><td>LR / FM / DeepFM</td></tr>
+            <tr><td>w<sub>i</sub></td><td>"第 i 个权重"</td><td>模型学出来的参数，表示这个特征有多重要</td><td>LR / FM 的一次项</td></tr>
+            <tr><td>z</td><td>"线性分"</td><td>特征加权求和的结果，还没变成概率</td><td>所有 CTR 模型</td></tr>
+            <tr><td>σ(z)</td><td>"sigmoid"</td><td>把 z 压到 0~1，得到点击概率 p</td><td>输出层</td></tr>
+            <tr><td>Σ</td><td>"求和"</td><td>把后面一串数加起来，比如 Σ<sub>i</sub> w<sub>i</sub>x<sub>i</sub></td><td>几乎所有公式</td></tr>
+            <tr><td>e<sub>u</sub> / e<sub>i</sub></td><td>"用户/物品向量"</td><td>embedding，几十维的数字向量，相似对象向量接近</td><td>双塔 / FM / DIN</td></tr>
+            <tr><td>⟨u, v⟩</td><td>"内积"</td><td>两向量逐维相乘再求和，衡量相似度</td><td>双塔召回 / FM 交叉项</td></tr>
+            <tr><td>⊙</td><td>"逐元素乘"</td><td>两个同维向量对应位置相乘，结果还是向量</td><td>DIN 注意力 / 特征交叉</td></tr>
+            <tr><td>a<sub>j</sub></td><td>"注意力权重"</td><td>第 j 条历史行为对当前候选的重要程度，通常由 softmax 归一化</td><td>DIN</td></tr>
+            <tr><td>N</td><td>"样本数"</td><td>参与计算损失的样本条数；损失通常要除以 N 求平均</td><td>LogLoss</td></tr>
+            <tr><td>y</td><td>"标签"</td><td>真实结果，点击=1、未点击=0</td><td>损失函数</td></tr>
+            <tr><td>K</td><td>"截断长度"</td><td>只看前 K 个，比如 Recall@100 的 100</td><td>召回评估</td></tr>
+            <tr><td>τ</td><td>"温度"</td><td>控制 softmax 分布陡不陡；τ 小 → 更集中，τ 大 → 更平滑</td><td>采样损失 / 蒸馏</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="recall"><span class="kicker">A · RECALL</span>召回层：为什么不能"直接上精排"</h2>
+      <p class="lead">新手最常见的想法是：既然 DIN 最准，那把 100 万条视频全丢给 DIN 打分不就行了？答案是延迟和成本都不允许，而且没必要。</p>
+
+      <h3>先算一笔延迟账</h3>
+      <p>假设你的精排模型是 DIN，单条候选打分（含特征拼接、GPU 前向）大约 0.8ms，一次请求要出 10 个结果。听起来很快？乘一下：</p>
+      <div class="kpi">
+        <div class="item"><div class="v">100 万</div><div class="l">全量候选（一个中型内容库）</div></div>
+        <div class="item"><div class="v">800 s</div><div class="l">100 万 × 0.8ms 的纯计算时间</div></div>
+        <div class="item"><div class="v">100 ms</div><div class="l">整个推荐接口的延迟预算（含网络、特征、重排）</div></div>
+        <div class="item"><div class="v">1 : 8000</div><div class="l">预算与实际需求的差距</div></div>
+      </div>
+      <p>所以工业界的做法是<b>漏斗式分层</b>：先用几乎不花时间的规则/索引把量级砍下来，再逐层加贵的模型。下面是项目一实际采用的结构，你可以直接对照代码里的四个阶段：</p>
+
+      <div class="pipeline">
+        <div class="step"><b>多路召回</b><span>热门 / ItemCF / 双塔，各取 Top100，合并去重约 260 条</span></div>
+        <div class="step"><b>合并去重</b><span>按 item_id 去重，记录来源路数（后续可做加权）</span></div>
+        <div class="step"><b>过滤</b><span>已看过的、下架的、资质不符的、重复创作者</span></div>
+        <div class="step"><b>粗排</b><span>轻量模型打分，千级 → 300 条</span></div>
+      </div>
+      <p class="small">注意：粗排不是"可选项"。当召回有 5 路、每路 500 条时，精排要打 2500 条，仍然超预算。粗排的存在是为了把"精排的输入条数"压到几十到几百。</p>
+
+      <div class="callout tip">
+        <p><b>一个反直觉的事实：</b>召回阶段追求的是<b>召回率</b>，不是准确率。多路召回里某一路只贡献了 3% 的曝光，但它覆盖了别的路完全捞不到的长尾兴趣——这一路就不能砍。判断标准是"去掉它，Recall@K 掉多少"，而不是"它排得准不准"。</p>
+      </div>
+
+      <h3>各层的量级与延迟预算（经验值）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>阶段</th><th>输入量级</th><th>输出量级</th><th>单次延迟预算</th><th>典型方法</th></tr></thead>
+          <tbody>
+            <tr><td>召回</td><td>10<sup>5</sup> ~ 10<sup>7</sup></td><td>10<sup>2</sup> ~ 10<sup>3</sup></td><td>10 ~ 30 ms（可并行多路）</td><td>倒排索引、ANN、规则</td></tr>
+            <tr><td>粗排</td><td>10<sup>3</sup></td><td>10<sup>2</sup> ~ 3×10<sup>2</sup></td><td>10 ~ 20 ms</td><td>双塔、小 LR/GBDT</td></tr>
+            <tr><td>精排</td><td>10<sup>2</sup></td><td>10<sup>2</sup>（只重排不剪枝）</td><td>30 ~ 60 ms</td><td>DeepFM、DIN、MMOE</td></tr>
+            <tr><td>重排</td><td>10<sup>2</sup></td><td>10 ~ 20</td><td>5 ~ 10 ms</td><td>MMR、打散、业务规则</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>这张表最重要的不是数字，而是<b>数量级关系</b>：每往下一层，输入少一个数量级，模型可以贵一个数量级。面试时被问"为什么召回和排序要分开"，答"量级差 3 个数量级、延迟预算只有 100ms、且精排模型无法对全库打分"，比背定义有用得多。</p>
+
+      <h3 id="cf">协同过滤：用"和你相似的人"来猜你喜欢</h3>
+      <p><b>为什么会出现：</b>在深度学习之前，没人能给每个用户训练一个模型。但日志里天然有"谁看过什么"，于是最朴素的想法是——相似的用户喜欢相似的东西。</p>
+      <p><b>一句话核心思想：</b>ItemCF 是"你喜欢的物品，和它相似的物品也推荐给你"；UserCF 是"和你相似的人喜欢的物品推荐给你"。</p>
+
+      <h4>公式：余弦相似度与共现矩阵</h4>
+      <div class="formula">
+sim(i, j) = |N(i) ∩ N(j)| / √( |N(i)| · |N(j)| )
+<span class="note">N(i) = 对物品 i 产生过行为的用户集合。分子是共现人数，分母做归一化，防止热门物品因为"跟谁都共现"而通吃。</span>
+      </div>
+      <p>把"用户 × 物品"的交互写成矩阵 R（行是用户、列是物品，有行为记 1），那么 <code>RᵀR</code> 的非对角元素就是共现次数矩阵，这就是"共现矩阵"这个词的来源。实际工程里没人真的去算这个稠密矩阵——5000 个物品就是 2500 万个格子，20 万物品根本存不下。</p>
+
+      <pre><code># ItemCF 离线计算（伪代码），核心是"按用户聚合，两两配对"
+pair_count = defaultdict(int)
+for user, items in user_clicked_items.items():      # 只遍历有行为的用户
+    items = [i for i in items if pop[i] &lt; POP_CAP]   # ① 热度截断
+    for a, b in combinations(set(items), 2):
+        w = 1.0 / log(1 + len(items))               # ② 活跃用户降权
+        pair_count[(a, b)] += w
+        pair_count[(b, a)] += w
+sim = {k: v / sqrt(pop[k[0]] * pop[k[1]]) for k, v in pair_count.items()}  # ③ 归一化
+# 在线：查倒排表，只算候选，不全量算
+cand = Counter()
+for i in user_recent_items:
+    for j, s in item_sim_topk[i][:20]:              # 每个物品只留 Top20 相似
+        cand[j] += s * recency_weight(i)
+</code></pre>
+
+      <h4>四个必须知道的工程细节</h4>
+      <div class="grid c2">
+        <div class="card accent">
+          <h4>① 热度惩罚（最常见的新手坑）</h4>
+          <p>用原始共现次数，热门视频会和所有视频都"高相似"。项目一里有 50% 头部视频只占 3.15% 的曝光份额概念上的反向问题——如果按曝光算相似度，头部会吸走全部推荐位。做法：分母用 <code>|N(i)|^α</code>（α 取 0.5~1），或对活跃用户的行为除以 <code>log(1+n)</code>。</p>
+        </div>
+        <div class="card accent">
+          <h4>② 倒排索引而不是相似度矩阵</h4>
+          <p>在线不能遍历所有物品算相似度。离线把"物品 → TopK 相似物品 + 分数"存成 KV，在线对用户最近 50 个行为查 50 次表、累加分数，复杂度从 O(物品数) 降到 O(50×K)。</p>
+        </div>
+        <div class="card accent">
+          <h4>③ 离线算 + 在线查表</h4>
+          <p>相似度是"物品属性"级别的慢变量，每天全量重算一次、增量按小时更新即可。用户侧只保留最近行为做加权。这样在线成本几乎为零，是 ItemCF 至今仍在生产环境跑的原因。</p>
+        </div>
+        <div class="card amber">
+          <h4>④ 冷启动直接失效</h4>
+          <p>新物品没有任何用户行为 → N(i) 为空 → 与所有物品相似度为 0；新用户没有行为 → 无从查起。所以 ItemCF 必须配一路热门/内容召回兜底，否则新内容永远起不来。</p>
+        </div>
+      </div>
+
+      <p><b>在系统里的位置：</b>召回层的一路，通常排在"热门"之后、"双塔"之前。它擅长挖<b>关联购买/关联观看</b>（看完 A 看 B），不擅长表达"用户长期兴趣"。</p>
+
+      <h4>UserCF 为什么现在很少用</h4>
+      <p>UserCF 需要维护"用户 → 相似用户"的关系。用户量级通常是物品的 10 倍以上，且用户兴趣漂移快、相似关系每天失效，存储和更新成本都高；更致命的是新用户没有相似邻居。它只在<b>物品少、用户多、时效性强</b>的场景（早期新闻推荐）有优势。记住这个判断即可，不必背公式细节。</p>
+      <div class="callout warn">
+        <p><b>坑：</b>把 ItemCF 的相似度直接当排序分用。ItemCF 分数没有概率含义，不可校准，也没法和其他路召回的分数比较大小。正确做法是各路召回只负责"给候选"，分数只用于路内截断；跨路比较交给粗排/精排模型。</p>
+      </div>
+<h3 id="vector">向量召回：把"匹配"变成"算内积"</h3>
+      <p><b>为什么会出现：</b>ItemCF 只能利用"共同行为"这种极稀疏的信号，没法把用户年龄、内容分类、文本语义放进去；而且它本质是查表，不能泛化到没共现过的组合。双塔把用户和物品各编码成一个向量，让"兴趣匹配"变成一次内积。</p>
+      <p><b>一句话核心思想：</b>分别用两个独立的塔把用户和物品映射到同一个 k 维空间，用向量内积近似"这个用户会不会点这个物品"。</p>
+
+      <h4>结构：用户塔 / 物品塔</h4>
+      <div class="chart">
+        <svg viewBox="0 0 820 250" role="img" aria-label="双塔结构示意">
+          <defs>
+            <marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+              <path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/>
+            </marker>
+          </defs>
+          <rect x="16" y="26" width="180" height="82" rx="10" fill="#eef0ff" stroke="#c7d2fe"/>
+          <text x="106" y="52" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">用户特征</text>
+          <text x="106" y="72" text-anchor="middle" font-size="10.5" fill="#475467">年龄 / 城市 / 兴趣标签</text>
+          <text x="106" y="90" text-anchor="middle" font-size="10.5" fill="#475467">历史行为序列</text>
+
+          <rect x="16" y="142" width="180" height="82" rx="10" fill="#e6f7f4" stroke="#a7f3d0"/>
+          <text x="106" y="168" text-anchor="middle" font-size="12" font-weight="700" fill="#0d9488">物品特征</text>
+          <text x="106" y="188" text-anchor="middle" font-size="10.5" fill="#475467">分类 / 时长 / 创作者</text>
+          <text x="106" y="206" text-anchor="middle" font-size="10.5" fill="#475467">标题 / 标签</text>
+
+          <rect x="250" y="26" width="180" height="198" rx="10" fill="#fff" stroke="#c7d2fe"/>
+          <text x="340" y="52" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">用户塔（MLP）</text>
+          <text x="340" y="76" text-anchor="middle" font-size="10.5" fill="#475467">输入维度随特征数量变</text>
+          <text x="340" y="96" text-anchor="middle" font-size="10.5" fill="#475467">2 层 128 → 64</text>
+          <text x="340" y="132" text-anchor="middle" font-size="10.5" fill="#98a2b3">用户侧特征每天变</text>
+          <text x="340" y="150" text-anchor="middle" font-size="10.5" fill="#98a2b3">→ 在线实时算</text>
+
+          <rect x="250" y="148" width="180" height="76" rx="10" fill="#fff" stroke="#a7f3d0"/>
+          <text x="340" y="174" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">物品塔（MLP）</text>
+          <text x="340" y="196" text-anchor="middle" font-size="10.5" fill="#475467">5000 个物品 → 5000 个向量</text>
+          <text x="340" y="214" text-anchor="middle" font-size="10.5" fill="#98a2b3">离线批量算，入向量库</text>
+
+          <circle cx="512" cy="60" r="14" fill="#4f46e5" opacity=".9"/>
+          <text x="512" y="65" text-anchor="middle" font-size="10" fill="#fff">u</text>
+          <circle cx="512" cy="200" r="14" fill="#0d9488" opacity=".9"/>
+          <text x="512" y="205" text-anchor="middle" font-size="10" fill="#fff">v</text>
+
+          <line x1="190" y1="67" x2="242" y2="67" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+          <line x1="190" y1="183" x2="242" y2="183" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+          <line x1="438" y1="67" x2="492" y2="62" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+          <line x1="438" y1="186" x2="492" y2="197" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+
+          <rect x="560" y="86" width="230" height="92" rx="10" fill="#f5f3ff" stroke="#ddd6fe"/>
+          <text x="675" y="112" text-anchor="middle" font-size="12" font-weight="700" fill="#4c1d95">score = u · v</text>
+          <text x="675" y="134" text-anchor="middle" font-size="10.5" fill="#475467">训练用 softmax 或点估</text>
+          <text x="675" y="152" text-anchor="middle" font-size="10.5" fill="#475467">在线用 ANN 找 TopN</text>
+          <line x1="524" y1="66" x2="592" y2="82" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+          <line x1="524" y1="196" x2="592" y2="182" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arr2)"/>
+        </svg>
+        <div class="cap"><b>关键约束：</b>两塔在算出向量之前<b>不能互相看见</b>。所以物品向量可以离线算好、进向量库；用户向量在线算一次。这是双塔能扛住千万级候选的唯一原因，也是它表达力上限的来源。</div>
+      </div>
+
+      <h4>训练目标：softmax 还是点估</h4>
+      <p>两种主流写法，区别在于"把召回当分类还是当回归"：</p>
+      <div class="formula">
+点估（pointwise）：L = −Σ [ y·log σ(u·v) + (1−y)·log(1−σ(u·v)) ]
+<span class="note">就是普通 CTR 的交叉熵。实现简单，但只告诉模型"这条正样本要好"，没告诉它"在几百万候选里要好"。</span>
+      </div>
+      <div class="formula">
+全库 softmax（sampled softmax）：L = −log( exp(u·v⁺ / τ) / Σ<sub>j∈S</sub> exp(u·v<sub>j</sub> / τ) )
+<span class="note">S 是"正样本 + 采样出的负样本"集合，τ 是温度，越小分布越尖。分母里的 j 越多、越接近全库，学到的内积越接近"全域竞争"下的排序。</span>
+      </div>
+      <p>直观区别：点估相当于训练"这题对不对"，softmax 相当于训练"在一堆选项里选对这个"。后者更贴近召回的评估方式（Recall@K 是相对排序），所以召回通常用 softmax 类目标。</p>
+
+      <h4>负采样：召回模型 80% 的效果来自这里</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>策略</th><th>怎么做</th><th>优点</th><th>风险 / 适用</th></tr></thead>
+          <tbody>
+            <tr><td>In-batch 负采样</td><td>同一个 batch 内，其他样本的正例当负例</td><td>零额外开销，GPU 利用率高</td><td>热门物品被反复当负例 → 被过度打压；batch 越大越有效</td></tr>
+            <tr><td>全局均匀采样</td><td>从全库按均匀分布抽</td><td>无偏，覆盖长尾</td><td>绝大多数是"太简单"的负例，梯度贡献低，收敛慢</td></tr>
+            <tr><td>按热度采样</td><td>按曝光频次的 3/4 次方采样</td><td>难负例比例合适，工业界默认</td><td>需校正采样偏差，否则分数有偏</td></tr>
+            <tr><td>Hard negative</td><td>用上一版模型/ANN 召回但用户没点的</td><td>直接提升"易混淆样本"的区分度</td><td>可能采到"用户其实会点但没曝光"的假负例，训练集被污染</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout case">
+        <p><b>项目一里的真实约束：</b>数据集人均点击序列长度只有 <b>1.16</b>。这意味着 in-batch 负采样时，很多用户的"正例"本身就很弱（只点过一次），hard negative 极易被误标。所以项目里双塔用的是"曝光未点击"作为负例、按热度做权重，而不是硬挖 hard negative——<b>负样本定义错了，再深的模型也白搭</b>。</p>
+      </div>
+
+      <h4>ANN 检索：为什么不能暴力算内积</h4>
+      <p>5000 个物品时暴力算内积是 5000 次乘法，无所谓。但真实场景是千万级物品、每次请求都要算，就必须用 ANN（近似最近邻）。</p>
+      <p><b>HNSW 一句话原理：</b>把向量组织成多层"可跳转的图"，上层稀疏用于长距离跳跃，下层稠密用于精细搜索；查询时从顶层贪心走向目标区域，只访问少量节点就能找到近似最近邻。</p>
+      <div class="formula">
+关键参数（以 Faiss HNSW 为例）
+M = 32          // 每个节点的邻居数：越大越准，内存和构建时间越高
+efConstruction = 200  // 建图时的候选队列长度：越大图质量越好
+efSearch = 64   // 查询时的候选队列长度：越大召回越高、延迟越高（可在线调）
+<span class="note">经验：efSearch 从 32 提到 128，Recall 可能从 0.90 提到 0.98，但延迟翻 2~3 倍。这是一个可以线上动态调的旋钮，也是"ANN 召回率"这个指标存在的原因。</span>
+      </div>
+      <p>重要认知：<b>ANN 本身有召回损失</b>。业务说的"召回率 95%"可能指的是 ANN 找回真近邻的比例，不是业务 Recall@K。面试时把这两个概念混在一起，很容易被追问穿。</p>
+
+      <h4>为什么双塔做不了特征交叉</h4>
+      <p>因为用户塔和物品塔<b>在输出向量之前完全隔离</b>。像"用户年龄 × 物品分类"这种交叉特征，需要在网络中间层就让两边信息相遇，而双塔只有在最后一步做内积时才相遇——表达能力被内积这个形式锁死了。</p>
+      <div class="callout warn">
+        <p><b>常见误解：</b>"我在用户塔里塞了物品 ID 的 embedding，不就有交叉了？"不行——在线时这个物品 ID 是候选，而用户塔必须<b>只算一次</b>给所有候选共用；把候选塞进用户塔，等于每个候选都要重算一遍用户塔，双塔的工程优势立刻消失。这是"离线指标能涨、上线跑不动"的经典死法。</p>
+      </div>
+
+      <h3>其它召回：每一路都有它存在的理由</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>召回方式</th><th>解决什么</th><th>适用场景</th><th>典型坑</th></tr></thead>
+          <tbody>
+            <tr><td>热门 / 趋势</td><td>兜底，保证新用户、无行为用户也有内容可出</td><td>所有场景必备一路</td><td>占比过高会让所有人首页一样，且加剧头部集中</td></tr>
+            <tr><td>地理（LBS）</td><td>本地供给强相关（到店、同城、房产）</td><td>本地生活、同城资讯</td><td>用户位置缺失/漂移；城市边界附近要扩圈</td></tr>
+            <tr><td>标签 / 规则</td><td>把运营意图、业务约束直接注入</td><td>活动、政策、新品类冷启</td><td>规则之间互相冲突，优先级没人维护</td></tr>
+            <tr><td>序列召回（S⁺ / SASRec）</td><td>建模"最近看了什么"的短期兴趣迁移</td><td>短视频、电商、内容流</td><td>序列短时（如人均 1.16 次）几乎无信号</td></tr>
+            <tr><td>图召回（GraphSAGE / 随机游走）</td><td>多跳关系传播，挖"朋友的兴趣""同作者作品"</td><td>社交、内容社区</td><td>图构建成本高；度数极端不均，热门节点主导</td></tr>
+            <tr><td>语义召回（向量化文本）</td><td>零行为也能匹配（query/标题/正文）</td><td>搜索、政策匹配、冷启动</td><td>语义相似≠用户喜欢，必须用行为信号校准</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>召回评估：别只看一个数</h3>
+      <p>三个指标必须一起看，因为它们互相牵制：</p>
+      <div class="formula">
+Recall@K = (命中用户真实交互物品的候选数) / (用户真实交互物品总数)
+Coverage = (被推荐过的物品数) / (全库物品数)
+Diversity = 1 − 平均两两相似度（通常用分类分布熵或 item2vec 余弦）
+<span class="note">Recall@K 衡量"漏没漏"，Coverage 衡量"是不是只推头部"，Diversity 衡量"一次推荐里是不是同质化"。</span>
+      </div>
+      <p>项目一的实测值很能说明问题：热门召回 Recall@100 是 <b>0.0966</b>，覆盖率只有 <b>0.02</b>（只覆盖 2% 的物品）；ItemCF 覆盖率高达 <b>0.8692</b>，但 Recall@100 只有 <b>0.0412</b>；双塔 Recall@100 <b>0.1129</b>、覆盖率 <b>0.1154</b>。三路各自的最优维度不同，所以它们必须同时存在——这正是"多路召回"的量化依据，不是拍脑袋堆模型。</p>
+      <div class="callout tip">
+        <p><b>怎么定 K：</b>K 不是越大越好。K 从 100 加到 500，Recall 可能只涨 2 个点，但下游粗排的输入翻 5 倍、延迟直接超标。工程上的做法是画一条"Recall@K 随 K 的曲线"，找拐点，而不是无脑取大。</p>
+      </div>
+<h2 id="rank"><span class="kicker">B · RANK</span>排序层：每一代模型都在补上一代的窟窿</h2>
+      <p class="lead">排序模型的历史不是"越做越深"，而是"每换一次结构，都是为了修一个具体的缺陷"。记住缺陷，比记住结构有用。</p>
+
+      <div class="timeline">
+        <div class="node">
+          <span class="yr">2010 之前</span>
+          <b>LR：把排序变成概率问题</b>
+          <p>能上线、能解释、能并行。缺点是把特征工程的所有脏活都留给了人。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2014</span>
+          <b>GBDT + LR：让树来造交叉特征</b>
+          <p>Facebook 的经典两段式。树负责自动组合，LR 负责给权重。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2010 – 2016</span>
+          <b>FM / FFM：稀疏特征的第二条路</b>
+          <p>用隐向量内积表达二阶交叉，参数量从 O(n²) 降到 O(nk)。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2016</span>
+          <b>Wide &amp; Deep：记忆与泛化分开建模</b>
+          <p>wide 记规则，deep 学泛化，联合训练。工程上第一次把"深度"带进推荐主链路。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2017</span>
+          <b>DeepFM：把 wide 换成 FM，端到端</b>
+          <p>省掉人工交叉，embedding 共享，是很多公司精排的基线。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2018</span>
+          <b>DIN：让用户行为"看情况"生效</b>
+          <p>候选不同，历史行为的权重就不同。注意力机制进入推荐。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2019 – 2020</span>
+          <b>DIEN / MMOE / PLE：建模兴趣演化与多目标</b>
+          <p>从"预测一个数"变成"同时预测 CTR、CVR、时长，还要处理目标冲突"。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2020 – 2022</span>
+          <b>双塔粗排 / 复杂精排：算力分层</b>
+          <p>不是模型创新，是工程约束下的必然分工。</p>
+        </div>
+        <div class="node">
+          <span class="yr">2023 –</span>
+          <b>生成式推荐 / LLM4Rec：换一种范式，但有边界</b>
+          <p>把"检索 + 排序"变成"生成 ID 序列"。可讲的空间大，能落地的场景窄。</p>
+        </div>
+      </div>
+
+      <h3>LR：一切排序模型的基线</h3>
+      <p><b>为什么会出现：</b>早期排序要解决的是"给定特征，估一个点击概率"，并且必须能在大规模稀疏特征上稳定训练、快速上线、可解释。逻辑回归正好满足全部三条。</p>
+      <p><b>一句话本质：</b>把特征线性加权后过一个 sigmoid，输出 0~1 的点击概率；权重就是"这个特征每增加 1，点击的 log-odds 增加多少"。</p>
+      <div class="formula">
+z = w₀ + Σ<sub>i</sub> wᵢ·xᵢ
+p = σ(z) = 1 / (1 + e<sup>−z</sup>)
+L = −(1/N) Σ [ y·log(p) + (1−y)·log(1−p) ]
+<span class="note">训练用 SGD/FTRL。FTRL 的关键是 L1 正则 + 自适应学习率，能让绝大多数稀疏特征的权重恰好为 0，模型体积可控——这是 LR 能在工业界活十几年的直接原因。</span>
+      </div>
+      <p><b>在系统里的位置：</b>精排。输入是几十到几百维特征（用户、物品、上下文、交叉），输出 pCTR，再乘 bid 得到 eCPM 排序。</p>
+      <p><b>代价：</b>只能表达线性关系。想让它学到"年龄 25–29 且分类是游戏"这类交叉，必须人工造 <code>age×cat</code> 特征。特征组合是组合爆炸的，人工只能覆盖一小部分。</p>
+      <div class="callout case">
+        <p><b>项目一的实测：</b>LR 在独热特征上 AUC 达到 <b>0.8473</b>，比全局均值基线 0.5 高出一大截。这不是 LR 强，而是<b>特征本身有信号</b>（分类、时长、新鲜度、位置都和点击强相关）。这个数字也解释了后面为什么"加深度只涨一点点"——线性部分已经把主要信号吃完了。</p>
+      </div>
+
+      <h3>GBDT + LR：用树自动造交叉特征</h3>
+      <p><b>解决 LR 的什么问题：</b>人工交叉特征覆盖不全、维护成本高。GBDT 的每棵树按特征阈值分裂，一条样本落到哪片叶子，本质上就是一组特征组合的离散编码。</p>
+      <p><b>一句话本质：</b>用树把连续特征切成分段、把特征组合编码成叶子编号，再交给 LR 学权重；交叉特征的活由树干，模型仍然是线性的。</p>
+      <div class="formula">
+输入 x → GBDT 的 T 棵树 → 每棵树的叶子编号 one-hot 拼接 → 得到稀疏向量 φ(x)
+p = σ( w<sub>lr</sub> · [ x, φ(x) ] )
+<span class="note">GBDT 只负责"造特征"，不参与梯度回传到 LR；两段是分开训练的（Facebook 2014 论文的做法）。</span>
+      </div>
+      <p><b>代价：</b>① 两阶段不联合优化，树学到的分裂目标（拟合残差）和最终排序目标（AUC/CTR）不一致；② 树的数量、深度、学习率要单独调，且树一旦训练完就固定，新特征进来要重训；③ 叶子 one-hot 维度可能上万，模型体积和内存上涨。</p>
+      <div class="callout tip">
+        <p><b>今天还用吗：</b>用，但形态变了。现在常见的是"GBDT 做特征筛选/分桶 + NN 做主体"，或者直接把统计特征（count、rate、分桶）喂给深度模型。纯粹的两段式 GBDT+LR 已经很少见，但它的思想——<b>用树把连续特征切成离散区间，让线性模型能学到非线性</b>——到处都是。</p>
+      </div>
+
+      <h3>FM / FFM：给稀疏交叉一个可学习的参数</h3>
+      <p><b>为什么会出现：</b>独热编码后特征极度稀疏。LR 想学 <code>x_age=25 × x_cat=游戏</code> 的权重，但这两个特征同时非零的样本可能只有几十条，权重根本学不出来。FM 的思路是：不直接学"组合的权重"，而是给每个特征一个隐向量，用内积算组合权重。</p>
+      <p><b>一句话本质：</b>每个特征学一个 k 维隐向量，任意两个特征的交叉强度 = 两个隐向量的内积；即使某个组合没出现过，只要两个特征各自出现过，内积就有值。</p>
+      <div class="formula">
+y = w₀ + Σ<sub>i=1</sub><sup>n</sup> wᵢ·xᵢ + Σ<sub>i=1</sub><sup>n</sup> Σ<sub>j=i+1</sub><sup>n</sup> ⟨vᵢ, vⱼ⟩·xᵢ·xⱼ
+其中 ⟨vᵢ, vⱼ⟩ = Σ<sub>f=1</sub><sup>k</sup> v<sub>i,f</sub>·v<sub>j,f</sub>
+<span class="note">vᵢ 是第 i 个特征的 k 维隐向量。k 通常取 8~32；n 是特征数（独热后可能上万），但每个特征只有一个隐向量，所以参数量是 n×k，不是 n²。</span>
+      </div>
+      <p><b>为什么能解决稀疏交叉：</b>组合权重不再是一个独立参数，而是由两个特征的隐向量共同决定。样本里"25 岁"和"游戏"各自出现得多，它们的向量就能学好；两者的内积即使没在训练集里同时出现过，也能泛化出一个合理的分数。这就是"参数共享"带来的泛化。</p>
+      <p><b>复杂度怎么从 O(n²k) 降到 O(nk)：</b>朴素计算要枚举所有 (i,j) 对，每对算一次 k 维内积，是 O(n²k)。利用内积的代数恒等式可以整体重写：</p>
+      <div class="formula">
+Σ<sub>i=1</sub><sup>n</sup> Σ<sub>j=i+1</sub><sup>n</sup> ⟨vᵢ, vⱼ⟩ xᵢ xⱼ
+  = ½ · [ ( Σ<sub>i=1</sub><sup>n</sup> vᵢ·xᵢ )² − Σ<sub>i=1</sub><sup>n</sup> vᵢ²·xᵢ² ]
+<span class="note">右边先对每个维度累加一次（O(nk)），再平方、再逐元素相减（O(nk)），所以整体 O(nk)。这是 FM 能上工业规模的关键——不是近似，是恒等变形。注意第二项必须逐元素平方，不能用 (Σ vᵢxᵢ)² 减去一个标量。</span>
+      </div>
+      <p>展开看更清楚：<code>(Σᵢ vᵢxᵢ)² = Σᵢ vᵢ²xᵢ² + 2Σᵢ<sub>&lt;j</sub> ⟨vᵢ,vⱼ⟩xᵢxⱼ</code>，把对角线项减掉、除以 2，剩下的正好是全部二阶交叉。所以只要算一次"加权向量和"，就能同时得到所有交叉项。</p>
+      <p><b>代价：</b>① 只建模二阶交叉，三阶以上的组合仍要靠 DNN 或人工特征；② 每个特征只有一个隐向量，无法区分"和谁交叉"——这正是 FFM 要改进的地方；③ k 要调，k 太小欠拟合、太大过拟合，且推理时要对每个候选算一次 O(nk) 的向量和。</p>
+
+      <h4>FFM：交叉还要看"跟谁交叉"</h4>
+      <p>FM 里每个特征只有一个向量，无论跟谁交叉都用它。FFM 认为这不合理：<code>年龄</code> 和 <code>分类</code> 交叉、<code>年龄</code> 和 <code>城市</code> 交叉，应该用不同的表示。于是每个特征对每个 field 各学一个向量：</p>
+      <div class="formula">
+y = w₀ + Σ wᵢxᵢ + Σ<sub>i</sub> Σ<sub>j≠i</sub> ⟨v<sub>i, f(j)</sub>, v<sub>j, f(i)</sub>⟩ · xᵢxⱼ
+<span class="note">f(j) 是特征 j 所属的 field。参数量从 n×k 变成 n×F×k（F 是 field 数），表达力更强，但内存和过拟合风险同步上升。</span>
+      </div>
+      <p><b>一句话本质：</b>每个特征按"对方属于哪个 field"准备多套隐向量，让同一次交叉的权重能感知交叉的类型，而不是所有交叉共用一套表示。</p>
+      <p><b>代价：</b>参数量 ×F，训练更慢、更容易过拟合，且无法用上面的 O(nk) 技巧（因为向量依赖对方 field），只能对 Top 交叉对做裁剪。所以 FFM 常用于 CTR 竞赛和小规模场景，大规模在线系统里 FM/DeepFM 更常见。</p>
+
+      <h3>Wide &amp; Deep：记忆和泛化，两条腿走路</h3>
+      <p><b>为什么会出现：</b>FM 只有二阶交叉，GBDT+LR 是两段式。Google 2016 年的想法是：<b>wide 部分记住"哪些组合历史上有效"（记忆），deep 部分泛化到没见过的组合（泛化）</b>，两者联合训练。</p>
+      <p><b>一句话本质：</b>一个线性"记忆器"加一个深"泛化器"，输出相加、梯度共享，让模型既有规则兜底又能探索。</p>
+      <div class="formula">
+y = σ( w<sub>wide</sub>·[x, φ(x)] + w<sub>deep</sub>·a<sup>(L)</sup> + b )
+<span class="note">φ(x) 是人工交叉特征（如"已安装 App × 曝光 App"），a<sup>(L)</sup> 是 deep 最后一层隐层。两部分梯度一起回传。</span>
+      </div>
+      <p><b>解决了什么：</b>纯 deep 对稀疏组合容易过拟合、泛化过头（推荐一堆"相关但没用"的东西）；纯 wide 只能记住见过的组合。联合后，wide 保证"确定性规则"不丢，deep 保证"探索"能力。</p>
+      <p><b>代价：</b>wide 部分仍然要人工设计交叉特征——这恰恰是后面 DeepFM 要解决的。另外两部分学习率要分别调，训练不稳定是常见问题。</p>
+
+      <h3>DeepFM：把 wide 换成 FM</h3>
+      <p><b>解决 Wide&amp;Deep 的什么问题：</b>wide 部分的人工交叉特征。DeepFM 用 FM 替换 wide，且 FM 和 deep <b>共享同一套 embedding</b>，端到端训练，不再需要特征工程。</p>
+      <p><b>一句话本质：</b>FM 负责低阶交叉、DNN 负责高阶交叉，两者共享同一份 embedding 表，一次训练同时拿到两种表达能力。</p>
+      <div class="formula">
+ŷ = σ( y<sub>FM</sub> + y<sub>DNN</sub> )
+y<sub>FM</sub> = w₀ + Σ wᵢxᵢ + Σ<sub>i&lt;j</sub> ⟨vᵢ, vⱼ⟩xᵢxⱼ
+y<sub>DNN</sub> = MLP( concat(e₁, e₂, …, e<sub>m</sub>) )
+<span class="note">关键细节：FM 的一阶项、二阶项和 DNN 共用同一份 embedding 表。共享的好处是低频特征也能从 DNN 侧拿到梯度，缓解稀疏。</span>
+      </div>
+      <p><b>为什么它成了基线：</b>结构简单、不需要人工交叉、能同时学低阶和高阶、训练稳定。在多数中等规模场景里，DeepFM 已经能拿到 80% 的收益。</p>
+      <div class="callout warn">
+        <p><b>坑：</b>把 DeepFM 的 FM 部分当成"可选的装饰"。如果去掉 FM、只留 DNN，在稀疏特征上往往掉点明显（尤其是长尾物品）。因为 DNN 对稀疏 ID 特征的学习效率远低于显式的二阶内积。项目一里 FM 单独就有 0.8501，DeepFM 只到 0.8520，说明<b>低阶信号占大头</b>。</p>
+      </div>
+
+      <h4>几代模型的对比，一张表看完</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>核心结构</th><th>解决了什么</th><th>代价</th><th>AUC（项目一）</th></tr></thead>
+          <tbody>
+            <tr><td>LR</td><td>线性 + sigmoid</td><td>可上线、可解释、稳定</td><td>交叉靠人工</td><td class="tnum">0.8473</td></tr>
+            <tr><td>GBDT+LR</td><td>树造特征 + LR</td><td>自动交叉</td><td>两段式不联合、树要重训</td><td>—</td></tr>
+            <tr><td>FM</td><td>二阶隐向量内积</td><td>稀疏交叉可学习、O(nk)</td><td>只有二阶</td><td class="tnum">0.8501</td></tr>
+            <tr><td>FFM</td><td>field-aware 隐向量</td><td>交叉更细粒度</td><td>参数 ×F、易过拟合</td><td>—</td></tr>
+            <tr><td>Wide&amp;Deep</td><td>wide + DNN 联合</td><td>记忆 + 泛化</td><td>wide 仍需人工特征</td><td>—</td></tr>
+            <tr><td>DeepFM</td><td>FM + DNN 共享 embedding</td><td>免人工交叉、端到端</td><td>行为序列未建模</td><td class="tnum">0.8520</td></tr>
+            <tr><td>DIN</td><td>DeepFM + 行为注意力</td><td>兴趣随候选变化</td><td>序列依赖、工程复杂</td><td class="tnum">0.8584</td></tr>
+          </tbody>
+        </table>
+      </div>
+<h3 id="din">DIN：用户的兴趣，取决于你推荐什么</h3>
+      <p><b>为什么会出现：</b>DeepFM 把用户历史行为做 embedding 后 <b>sum pooling</b> 成一个固定向量。问题在于，这个向量和候选物品无关——不管候选是"篮球"还是"美妆"，用户的历史兴趣表示都一模一样。但真实情况是：用户历史里既有篮球也有美妆，推荐篮球时应该多看篮球行为，推荐美妆时应该多看美妆行为。</p>
+      <p><b>一句话本质：</b>用候选物品给用户历史行为做注意力加权，让"用户表示"随候选变化。</p>
+      <div class="formula">
+v<sub>u</sub>(A) = Σ<sub>j=1</sub><sup>H</sup> a(e<sub>j</sub>, e<sub>a</sub>) · e<sub>j</sub>
+a(e<sub>j</sub>, e<sub>a</sub>) = exp( MLP([e<sub>j</sub>, e<sub>a</sub>, e<sub>j</sub> ⊙ e<sub>a</sub>]) ) / Σ<sub>k=1</sub><sup>H</sup> exp( MLP([e<sub>k</sub>, e<sub>a</sub>, e<sub>k</sub> ⊙ e<sub>a</sub>]) )
+<span class="note">e_j：第 j 条历史行为的 embedding；e_a：候选物品 embedding；⊙：逐元素乘；H：行为序列长度。注意力分数在序列维度上做 softmax，所以权重和为 1。</span>
+      </div>
+      <p>对应到 attention 的三个角色，DIN 的映射非常清晰：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>角色</th><th>在 DIN 里是什么</th><th>直觉</th></tr></thead>
+          <tbody>
+            <tr><td>Query（查询）</td><td>候选物品的 embedding <code>e_a</code></td><td>"我现在在考虑推这个，你看看像不像他喜欢的"</td></tr>
+            <tr><td>Key（键）</td><td>历史行为的 embedding <code>e_j</code></td><td>每条历史行为用来"应答"的凭证</td></tr>
+            <tr><td>Value（值）</td><td>历史行为的 embedding <code>e_j</code> 本身</td><td>加权求和后构成用户兴趣向量</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>为什么要对历史行为做注意力：</b>因为用户兴趣是<b>多峰</b>的。一个用户可能既看健身也看美食，但这次候选是减脂餐，健身行为的相关性更高。sum pooling 把两个峰平均掉，等于告诉模型"他一半时间在健身、一半时间在吃"，对哪个候选都不精准。注意力相当于每次都重新组织一遍历史，只留下和当前候选相关的部分。</p>
+      <p><b>工程细节：</b>① 行为序列要做截断（通常最近 50~200 条），太长的序列延迟扛不住；② 需要用 mask 处理变长序列，padding 位置的注意力分数要置为 −∞；③ 序列里要带"行为类型 + 时间差"的 embedding，否则无法区分"刚看过"和"半年前看过"；④ 线上要做行为序列的实时拼接（用户刚点完下一个请求就要看到），这是特征服务最容易出问题的地方。</p>
+      <p><b>代价：</b>注意力是逐候选计算的。100 个候选 × 50 条行为 × 一个小 MLP，计算量比 DeepFM 高一个量级，通常只能在精排（几十到几百候选）用，不能下放到召回。另外序列长度不足时（项目一人均序列 1.16），注意力几乎退化成"取最近一条"，涨点有限。</p>
+      <div class="callout case">
+        <p><b>项目一的实测对比很诚实：</b>DeepFM 0.8520 → DIN 0.8584，只涨了 <b>0.0064</b>。原因就是行为序列太短（人均点击 1.16 次），DIN 的注意力没有足够的历史可供"选择"。但这 0.0064 依然稳定（6 个 epoch 的曲线单调上升），说明结构本身有效，只是数据供给不足。<b>模型和数据的匹配，比模型是否先进更重要。</b></p>
+      </div>
+
+      <h3>DIEN 与多任务：从"预测一个数"到"同时预测几个数"</h3>
+      <h4>DIEN：兴趣不只有强弱，还有演化</h4>
+      <p>DIN 只对历史行为做加权，没有建模"兴趣随时间怎么变"。DIEN（2019）先用 GRU 把行为序列编码成隐状态序列，再用 <b>AUGRU</b>（带注意力的 GRU）让候选物品决定"在演化的哪一步停下"。一句话：<b>DIN 看兴趣的分布，DIEN 看兴趣的轨迹</b>。</p>
+      <p>代价：序列模型训练慢、线上只能增量推理，且对序列长度更敏感。序列短于 5 条时，DIEN 相对 DIN 几乎没有收益，工程复杂度却翻倍——这是典型的"论文有效、业务不划算"。</p>
+
+      <h4>多任务：为什么不能把 CTR 和 CVR 分开训</h4>
+      <p>广告和电商场景要同时预测点击率（CTR）和转化率（CVR），排序公式通常是 <code>eCPM = bid × pCTR × pCVR</code>。看起来可以训两个独立模型，但 CVR 模型有一个致命问题：<b>CVR 的训练样本只有"点击过"的样本</b>，因为只有点击后才可能转化。这带来两个偏差：</p>
+      <div class="grid c2">
+        <div class="card amber">
+          <h4>样本选择偏差（SSB）</h4>
+          <p>模型在"点击样本"上训练，却在"全量曝光样本"上预测。点击样本是经过 CTR 模型筛选过的有偏子集，分布和全量不一致。</p>
+        </div>
+        <div class="card amber">
+          <h4>数据稀疏（DS）</h4>
+          <p>点击样本本来就少（项目一 CTR 13.82%），转化更少。单独训 CVR 模型，参数根本学不充分。</p>
+        </div>
+      </div>
+      <p><b>ESMM 的解法：</b>不直接学 pCVR，而是学 <b>pCTCVR = pCTR × pCVR</b>，并在<b>全量曝光样本</b>上训练。两个子网络共享 embedding，CVR 分支只在点击样本上算损失，但梯度可以通过共享底层从全量样本里获得信息。</p>
+      <div class="formula">
+pCTCVR = pCTR × pCVR
+L = Σ<sub>曝光样本</sub> L<sub>CTR</sub>(y<sub>click</sub>, pCTR) + Σ<sub>曝光样本</sub> L<sub>CTCVR</sub>(y<sub>click&amp;convert</sub>, pCTCVR)
+<span class="note">关键：两个损失都在全量曝光空间上算。y_click&convert 表示"既点击又转化"，没有点击的样本这一项为 0，但仍然参与 pCTCVR 的损失计算——这就是它绕开样本选择偏差的方式。</span>
+      </div>
+      <p>注意一个细节：ESMM 输出的是 pCTR 和 pCTCVR，真正的 pCVR 要用两者相除得到，这个除法在 pCTR 很小时可能数值不稳定，实践中要加保护。</p>
+
+      <h4>MMOE 与 PLE：多目标之间的"跷跷板"</h4>
+      <p>多任务最怕的是<b>负迁移</b>：优化 CTR 把 CVR 搞差了。原因是所有任务共享同一个底层，任务之间互相抢参数。</p>
+      <div class="formula">
+MMOE：y<sub>k</sub> = h<sub>k</sub>( Σ<sub>i=1</sub><sup>E</sup> g<sub>k,i</sub>(x) · expert<sub>i</sub>(x) )
+PLE ：y<sub>k</sub> = h<sub>k</sub>( concat[ g<sub>k</sub>(x) ⊙ {expert<sub>k,j</sub>}, g<sub>k</sub>(x) ⊙ {expert<sub>shared,j</sub>} ] )
+<span class="note">g_k 是第 k 个任务的 gate（softmax 输出权重）。MMOE 所有任务共享同一组 expert，只是权重不同；PLE 在此之上给每个任务留了"专属 expert"，只让共享 expert 承担共性。</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>对比</th><th>MMOE</th><th>PLE</th></tr></thead>
+          <tbody>
+            <tr><td>专家池</td><td>全部共享，任务用 gate 选择</td><td>共享专家 + 每个任务专属专家</td></tr>
+            <tr><td>解决的问题</td><td>硬共享导致的负迁移</td><td>MMOE 在任务相关性低时仍会互相干扰（seesaw）</td></tr>
+            <tr><td>参数/复杂度</td><td>较低</td><td>较高，专家数随任务数增长</td></tr>
+            <tr><td>适用</td><td>任务相关性中等、算力紧</td><td>任务差异大（如点击 vs 长时间观看）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>坑：</b>多任务不是"多预测几个目标就一定涨"。如果两个任务的相关性很低（比如"点击"和"举报"），强行共享底层会让两个任务都变差。上线前必须做单任务 vs 多任务的 A/B，并检查每个任务的 AUC 是不是都掉了。</p>
+      </div>
+
+      <h3>生成式推荐：能讲什么，不能吹什么</h3>
+      <p>2023 年之后最热的方向。核心思路是把"召回 + 排序"改写成<b>序列生成</b>：先把每个物品量化成一个短 ID（semantic ID，比如用 RQ-VAE 把内容向量逐层量化成 3 个 token），再训练一个 seq2seq 模型，输入用户历史，<b>自回归地生成</b>下一个可能被点击的物品 ID。</p>
+      <div class="formula">
+P(i<sub>t+1</sub> | i<sub>1</sub>, …, i<sub>t</sub>) = Π<sub>c=1</sub><sup>C</sup> P( token<sub>c</sub> | i<sub>1</sub>, …, i<sub>t</sub>, token<sub>&lt;c</sub> )
+<span class="note">C 是一个物品被拆成的 token 数（常见 3~4）。生成过程是逐 token 的，所以一个物品需要 C 次前向；这也是它延迟高的根本原因。</span>
+      </div>
+      <p>它确实解决了一个真问题：传统召回把"用户兴趣"压成一个向量，而生成式模型可以表达"多峰兴趣 + 序列依赖"，并且理论上一个模型替代多路召回。但边界必须讲清楚：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>边界</th><th>具体表现</th><th>工程含义</th></tr></thead>
+          <tbody>
+            <tr><td>物品必须"已入词表"</td><td>新物品要先算语义 ID，模型才能生成它</td><td>新品冷启动依赖 ID 映射的更新频率，做不到分钟级</td></tr>
+            <tr><td>解码延迟高</td><td>逐 token 生成，一个候选 C 次前向；要出 100 个候选就是几百次</td><td>很难塞进 100ms 预算，通常只能做"少量候选"或离线</td></tr>
+            <tr><td>目标不对齐</td><td>训练目标是"下一个物品的似然"，不是 CTR / 时长 / 多样性</td><td>需要额外的排序模型和重排兜底，不能端到端替代</td></tr>
+            <tr><td>可控性差</td><td>生成结果难保证"不含违规内容""同创作者不超过 2 条"</td><td>合规、频控、打散仍然要靠规则层</td></tr>
+            <tr><td>评估口径变了</td><td>输出是序列，不是分数；Recall@K 要重定义</td><td>离线指标和现有链路不可直接比较，A/B 成本高</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>别吹的版本：</b>"我们用它替代了整条召回排序链路。"<b>能落地的版本：</b>"我们用 semantic ID + 生成式模型做了一路补充召回，离线 Recall@100 提升 X%，线上作为其中一路参与融合；延迟从 8ms 涨到 25ms，所以只放在非高峰或预生成。"——后者才是 2024–2025 年多数公司的真实状态。</p>
+      </div>
+
+      <h2 id="coarse"><span class="kicker">C · COARSE &amp; RERANK</span>粗排与重排：夹在中间的工程妥协</h2>
+      <h3>粗排：为什么需要一个"不准但很快"的模型</h3>
+      <p>假设召回合并后 2000 条候选，精排单条 0.8ms，就是 1.6 秒——预算是 60ms。粗排要做的是用 <b>0.02ms/条</b> 的成本，把 2000 条砍到 300 条，同时保证"砍掉的里面没有太多用户会点的"。</p>
+      <p>常见做法有三种，本质都是"减少计算量"：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>做法</th><th>怎么省</th><th>代价</th></tr></thead>
+          <tbody>
+            <tr><td>复用双塔向量，只算内积</td><td>物品向量离线算好，在线一次内积；可加少量交叉特征</td><td>精度明显低于精排，只能做粗筛</td></tr>
+            <tr><td>轻量 LR / GBDT + 少量特征</td><td>特征少、无 GPU、可批量向量化</td><td>吃不到行为序列和高阶交叉</td></tr>
+            <tr><td>精排模型蒸馏到小模型</td><td>用精排的打分当 soft label，小模型学排序</td><td>需要额外训练链路，蒸馏目标要选对（pointwise 还是 pairwise）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>粗排的核心矛盾：</b>它和精排的目标一致（排序），但约束完全不同（延迟）。所以粗排的评估不能只看 AUC，要看 <b>Top-N 保留率</b>：精排 Top100 里有多少被粗排留下来了。这个指标比 AUC 更贴近它的实际职责。</p>
+
+      <h3>重排：分数高不代表该排在前面</h3>
+      <p>精排给每条候选一个分数，但如果直接按分数排序，会出现三个问题：① 前 10 条全是同一个创作者；② 全是同一类内容，用户很快疲劳；③ 违反业务规则（违规内容、已下架、频控）。重排就是在这三步上做修正。</p>
+
+      <h4>多样性：MMR 公式</h4>
+      <p>MMR（Maximal Marginal Relevance）是"相关性"和"多样性"的加权折中。每选一个物品，都要扣掉它和已选集合的相似度：</p>
+      <div class="formula">
+MMR = argmax<sub>D<sub>i</sub> ∈ R \ S</sub> [ λ · Sim<sub>1</sub>(D<sub>i</sub>, Q) − (1 − λ) · max<sub>D<sub>j</sub> ∈ S</sub> Sim<sub>2</sub>(D<sub>i</sub>, D<sub>j</sub>) ]
+<span class="note">R：候选集；S：已选集合；Sim₁：候选与用户/查询的相关性（通常用精排分归一化）；Sim₂：候选之间的相似度（同分类=1，不同分类按 embedding 余弦）；λ ∈ [0,1] 控制偏向相关性还是多样性。</span>
+      </div>
+      <p>λ=1 时退化成纯按分数排序；λ=0.7 时，一个分数很高但和已选内容重复的物品，会被"惩罚"到后面。工程上 Sim₂ 不用真的算 embedding 余弦，用"分类相同 / 创作者相同 / 标签重合度"这种便宜特征就够了。</p>
+      <pre><code># 重排：MMR + 打散 + 业务规则（简化伪代码）
+selected = []
+while len(selected) &lt; 10:
+    best, best_score = None, -1e9
+    for it in candidates:
+        if violated(it):                      # 频控 / 已下架 / 黑名单
+            continue
+        rel = norm_score[it]
+        dup = max([sim(it, s) for s in selected] or [0])
+        mmr = lam * rel - (1 - lam) * dup
+        if same_creator(it, selected[-2:]) or same_cat(it, selected[-2:]):
+            mmr -= 0.15                       # 打散惩罚：相邻两位不重复
+        if mmr &gt; best_score:
+            best, best_score = it, mmr
+    selected.append(best)
+    candidates.remove(best)
+</code></pre>
+      <p><b>打散规则</b>通常是硬约束，不进 MMR 的软分数：同一创作者最多 2 条、同分类不相邻、前 3 位必须覆盖至少 2 个分类。<b>业务规则</b>优先级最高：置顶、强插、频控（同一内容 24 小时内不重复曝光）、合规过滤。<b>流量调控</b>则是从平台视角干预：给新内容保底曝光、给长尾内容配额、给商业化内容插槽。</p>
+      <div class="callout danger">
+        <p><b>坑：</b>重排的规则叠加太多，会互相打架。真实项目里出现过"打散要求相邻不同类"+"运营要求前 3 位必须有两个活动位"+"频控要求 24 小时不重复"同时生效，结果候选池被过滤到不足 10 条，接口直接返回空列表。规则必须<strong>分层 + 兜底</strong>：硬规则先过滤，软规则只扣分不淘汰，最后一定要有"不足时放宽"的降级逻辑。</p>
+      </div>
+<h2 id="train"><span class="kicker">D · TRAINING</span>训练与调优：模型之外，决定成败的部分</h2>
+      <p class="lead">同一个 DeepFM，两个人训出来的 AUC 可能差 0.02——比换模型带来的差异还大。这一节讲的全是不写进论文、但每天都在踩的东西。</p>
+
+      <h3>损失函数：你优化的目标，决定了模型学成什么样</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>损失</th><th>形式</th><th>适合什么</th><th>副作用</th></tr></thead>
+          <tbody>
+            <tr><td>LogLoss（交叉熵）</td><td><code>−[y·log p + (1−y)·log(1−p)]</code></td><td>需要概率值（eCPM 要乘 bid）</td><td>被大量简单负例主导，排序区分度不一定最好</td></tr>
+            <tr><td>加权 LogLoss</td><td><code>−Σ wᵢ·[…]</code></td><td>样本重要性不同（时长、转化）</td><td>权重不当会让预测概率整体偏移，必须重新校准</td></tr>
+            <tr><td>Pairwise / BPR</td><td><code>−log σ(s⁺ − s⁻)</code></td><td>只关心相对顺序（召回、粗排）</td><td>输出不是概率，不能直接进 eCPM</td></tr>
+            <tr><td>Focal Loss</td><td><code>−α(1−p)^γ·log p</code></td><td>极不平衡（转化率 <1%）</td><td>会破坏校准，需要单独做概率校准</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>一个真实的选择：</b>短视频推荐里"点击"不等于"满意"，完播和点赞更能代表目标。常见做法是把标签做成加权：点击=1、完播再+1、点赞+2，或者直接用播放时长做回归。项目一里完播率 57.3%、点赞率 12.64%，如果只优化点击，模型会偏向"标题党"——完播和点赞信号必须进损失或进多任务。</p>
+
+      <h3>样本权重与样本构造</h3>
+      <ul class="checklist">
+        <li><b>曝光未点击</b>是负样本，这没错；但"曝光了 0.1 秒就划走"和"看了 20 秒没点"不是同一种负例，有权重差异。</li>
+        <li><b>位置偏差</b>：第 1 位 CTR 15.28%、第 4 位 12.59%，差 2.7 个百分点。这个差异是"位置"造成的，不是内容更好。训练时可以给低位置样本更高权重，或用位置作为特征 + 线上置 0 做 debias。</li>
+        <li><b>重复曝光</b>：同一用户 24 小时内看到同一内容多次，只保留第一次作为样本，否则正负样本都会被重复计入，模型过拟合"热门"。</li>
+        <li><b>时间切分</b>：绝不能随机切分。用第 1–24 天训练、第 25–30 天测试，才能模拟"用过去预测未来"。</li>
+      </ul>
+
+      <h3>过拟合与正则</h3>
+      <p>推荐模型的过拟合和 CV 任务不太一样：它往往不是"记住训练集"，而是<b>记住热门物品和活跃用户</b>。表现是训练 AUC 0.90、测试 0.85，且推荐结果高度集中在头部。</p>
+      <div class="grid c2">
+        <div class="card">
+          <h4>有效的做法</h4>
+          <ul class="checklist">
+            <li>Embedding 加 L2 正则（比全连接层更重要）</li>
+            <li>Dropout 放在 embedding 之后、隐层之间</li>
+            <li>Early stopping：看验证集 AUC，不看训练 loss</li>
+            <li>低频特征做频次截断（出现 &lt; 5 次归为 UNK）</li>
+          </ul>
+        </div>
+        <div class="card amber">
+          <h4>看似有效其实没用</h4>
+          <ul class="checklist">
+            <li>只加 BatchNorm：小 batch 下反而更不稳定</li>
+            <li>把 embedding 维度调到 256：参数暴涨，稀疏特征更学不动</li>
+            <li>用 AUC 早停但不看 LogLoss：模型可能过度自信</li>
+            <li>在测试集上反复调参：这本身就是过拟合</li>
+          </ul>
+        </div>
+      </div>
+
+      <h4>Embedding 维度怎么选</h4>
+      <p>经验规则不是"越大越好"，而是和数据密度匹配：</p>
+      <div class="formula">
+d ≈ k · (类别数)<sup>1/4</sup>，实践区间 8 ~ 64
+<span class="note">项目一的物品只有 5000 个、曝光 31.8 万条，每个物品平均 63 次曝光，k 取 32 已经足够；把 d 提到 128，参数量 ×4，AUC 反而可能掉。真正需要大维度的是"物品数千万、每条样本都能贡献梯度"的场景。</span>
+      </div>
+
+      <h3>离线 AUC 涨了，线上为什么不涨：6 个原因</h3>
+      <p>这是面试高频题，也是实际工作里最贵的坑。按发生频率排序：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>原因</th><th>典型现象</th><th>怎么验证</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><b>特征穿越</b></td><td>离线 AUC 异常高（0.95+），线上打回原形</td><td>检查特征时间戳是否晚于标签时间；用"当时可知"的特征重训一遍</td></tr>
+            <tr><td>2</td><td><b>样本偏差</b></td><td>训练样本只来自旧策略曝光的物品，新模型想推的 item 没样本</td><td>看训练集里 item 分布 vs 全库分布；做 IPS / 重加权</td></tr>
+            <tr><td>3</td><td><b>位置偏差</b></td><td>模型学到"排第 1 就会点"，线上重新排序后失效</td><td>训练时去掉位置特征对比；或做 position debias</td></tr>
+            <tr><td>4</td><td><b>分布漂移</b></td><td>离线用 30 天平均，线上是当天热点</td><td>按天算 AUC，看最近 3 天是否下降；监控特征 PSI</td></tr>
+            <tr><td>5</td><td><b>指标口径不一致</b></td><td>离线算的是"曝光样本 AUC"，线上考核"人均时长"</td><td>把线上目标换算出离线代理指标，两边对齐</td></tr>
+            <tr><td>6</td><td><b>链路不一致</b></td><td>离线特征用批处理算，线上用实时算，同一特征两个值</td><td>做特征一致性校验：抽样比对离线/线上同 key 的值</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout danger">
+        <p><b>最容易骗过自己的是第 1 条。</b>项目一的数据是仿真的，位置、时长、质量分都在曝光时刻已知，所以不存在穿越；但真实业务里，"视频 7 日 CTR"这种特征如果按天更新，就可能把未来的点击数算进去。上线前一定要问一句：<b>这个特征在产生这条样本的那一刻，真的算得出来吗？</b></p>
+      </div>
+
+      <h3>怎么选模型：一张决策表</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>你的情况</th><th>建议起点</th><th>理由</th><th>下一步</th></tr></thead>
+          <tbody>
+            <tr><td>样本 &lt; 10 万，特征几十维</td><td>LR / GBDT</td><td>深度模型参数多，学不动；树模型对中小数据更稳</td><td>先做特征，再考虑 FM</td></tr>
+            <tr><td>样本百万级，稀疏 ID 特征多</td><td>FM / DeepFM</td><td>能自动学二阶交叉，性价比最高</td><td>加行为序列 → DIN</td></tr>
+            <tr><td>有较长行为序列（&gt;10 条/人）</td><td>DIN / DIEN</td><td>序列是增量信息，注意力能兑现</td><td>多目标 → MMOE/PLE</td></tr>
+            <tr><td>延迟 &lt; 20ms，候选上千</td><td>双塔 / 轻量 GBDT</td><td>复杂模型跑不完，先保吞吐</td><td>蒸馏精排模型</td></tr>
+            <tr><td>多目标（点击 + 转化 + 时长）</td><td>MMOE / PLE + ESMM</td><td>共享底层，缓解数据稀疏</td><td>检查任务相关性，避免负迁移</td></tr>
+            <tr><td>行为极稀疏（人均 &lt; 2 次）</td><td>热门 + 内容/语义召回 + LR</td><td>个性化模型没有数据支撑，强基线更可靠</td><td>先补数据，再上模型</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="real"><span class="kicker">E · EVIDENCE</span>用项目一的真实指标说话</h2>
+      <p class="lead">下面三张图的数据全部来自 <code>data/p1_metrics.json</code>，没有手工改动。数字不好看的地方，恰恰最有信息量。</p>
+
+      <div class="kpi">
+        <div class="item"><div class="v">20,000</div><div class="l">用户数</div></div>
+        <div class="item"><div class="v">5,000</div><div class="l">视频数</div></div>
+        <div class="item"><div class="v">317,866</div><div class="l">曝光日志条数</div></div>
+        <div class="item"><div class="v">13.82<small>%</small></div><div class="l">整体 CTR</div></div>
+        <div class="item"><div class="v">1.16</div><div class="l">人均点击序列长度</div></div>
+      </div>
+
+      <h3>① 排序模型 AUC：0.5 → 0.847 是大头，0.847 → 0.858 是细活</h3>
+      <div class="chart" id="chart-auc"></div>
+      <p>看这张图要先建立一个预期：<b>基线 50 到 LR 84.7 的这 34.7 个点，是"从没有模型"到"有模型"的跃迁</b>；而 LR 到 DIN 的 1.11 个点，才是"模型结构"的贡献。很多人面试时把后者说成自己的主要工作，一问细节就露馅。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>AUC</th><th>LogLoss</th><th>预测均值 pCTR</th><th>真实 CTR</th></tr></thead>
+          <tbody>
+            <tr><td>全局均值基线</td><td class="tnum">0.5000</td><td class="tnum">0.4010</td><td class="tnum">0.1383</td><td class="tnum">0.1378</td></tr>
+            <tr><td>LR（独热特征）</td><td class="tnum">0.8473</td><td class="tnum">0.2939</td><td class="tnum">0.1381</td><td class="tnum">0.1378</td></tr>
+            <tr><td>FM</td><td class="tnum">0.8501</td><td class="tnum">0.2913</td><td class="tnum">0.1387</td><td class="tnum">0.1378</td></tr>
+            <tr><td>DeepFM</td><td class="tnum">0.8520</td><td class="tnum">0.2905</td><td class="tnum">0.1446</td><td class="tnum">0.1378</td></tr>
+            <tr><td>DIN（简化版）</td><td class="tnum">0.8584</td><td class="tnum">0.2867</td><td class="tnum">0.1527</td><td class="tnum">0.1378</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>注意最后两列。</b>AUC 一路涨，但预测均值从 0.1381 漂到 0.1527，比真实 CTR 0.1378 高了 10.8%。这意味着 DIN 的排序能力更强，但<b>概率校准变差了</b>。如果这条链路要算 eCPM（pCTR × bid），高估 10% 会直接导致广告主超预算。所以排序模型上线前必须做校准（Platt scaling / isotonic regression），不能只看 AUC。</p>
+      </div>
+
+      <h3>② 三个模型的训练曲线：都在第 4–5 个 epoch 后走平</h3>
+      <div class="chart" id="chart-curve"></div>
+      <p>三条曲线的形状比终值更有用：</p>
+      <ul class="checklist">
+        <li>FM 从 0.8387 起步，6 个 epoch 只涨到 0.8501（+1.14 个点），说明<b>二阶交叉的信息量有限</b>，很快吃满。</li>
+        <li>DeepFM 起步 0.8466（比 FM 高 0.79 个点），终点 0.8520。它的优势在于<b>起点高</b>，而不是后劲足——DNN 部分很快收敛。</li>
+        <li>DIN 第 1 个 epoch 就 0.8507，超过了 FM 的最终值；第 5–6 个 epoch 从 0.8581 到 0.8584 只涨 0.0003，已经接近收敛。继续训练只会过拟合。</li>
+      </ul>
+      <p>实践含义：<b>Early stopping 的 patience 设 2 就够</b>，再训下去验证集 AUC 会掉。另外，三条曲线没有交叉，说明在这个数据规模下模型容量不是瓶颈——换更大的模型不会带来质变。</p>
+
+      <h3>③ 召回 Recall@100：双塔最好，但 ItemCF 输给热门</h3>
+      <div class="chart" id="chart-recall"></div>
+      <p><b>先解释"为什么 LR 已经 0.847，DIN 只涨到 0.858"。</b>三个原因叠加：</p>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>信号以低阶为主</h4>
+          <p>分类（搞笑 25.07% vs 萌宠 6.86%）、新鲜度（当天 15.95% vs 30 天前 10.74%）、位置（第 1 位 15.28% vs 第 4 位 12.59%）——这些都是一阶或简单交叉特征，LR 用独热就能吃掉。深度模型能加的主要是"高阶组合"，而这部分在仿真数据里本来就弱。</p>
+        </div>
+        <div class="card accent">
+          <h4>序列太短，DIN 没料可用</h4>
+          <p>人均点击 1.16 次，意味着大部分用户的行为序列只有 0 或 1 条。DIN 的注意力机制需要"多条历史里挑相关的"，序列长度为 1 时，注意力权重恒为 1，退化成 DeepFM。它能涨 0.0064，已经算超常发挥。</p>
+        </div>
+        <div class="card accent">
+          <h4>AUC 接近这份数据的上限</h4>
+          <p>标签由"兴趣匹配 + 位置加成 + 随机噪声"生成，本身有不可约的随机性。0.85 左右已经是这份仿真数据的信息上限，再深的模型也只能拟合噪声。真实业务里如果 AUC 卡在 0.8，先怀疑特征，不要怀疑模型深度。</p>
+        </div>
+      </div>
+
+      <p><b>再解释"为什么 ItemCF 反而低于热门"。</b>这是本章最值得记住的一个反例：</p>
+      <div class="formula">
+热门：Recall@100 = 0.0966，Coverage = 0.0200
+ItemCF：Recall@100 = 0.0412，Coverage = 0.8692
+双塔：Recall@100 = 0.1129，Coverage = 0.1154
+<span class="note">Coverage 的定义是"被推荐过的物品数 / 全库物品数"。ItemCF 覆盖了 86.92% 的物品，热门只覆盖 2%——但 Recall 差了 2.3 倍。</span>
+      </div>
+      <p>原因不复杂：<b>人均交互只有 1.16 次，共现矩阵极度稀疏</b>。ItemCF 靠"两个物品被同一批人看过"来建立相似度；一个人平均只点 1.16 条，绝大多数物品对根本没有共现，相似度为 0 或来自偶然的一次共现。于是 ItemCF 只能靠零星信号把候选摊到全库（覆盖率 86.92% 就是这么来的），但摊得越开、命中真实兴趣的概率越低。</p>
+      <p>热门召回则相反：它只推 2% 的头部内容，而这份数据里头部内容的 CTR 本来就高（搞笑 25.07%、美食 21.76%），用户兴趣也集中在这些类目上，所以"无脑推热门"的命中率反而更高。双塔能赢，是因为它用内容特征和用户特征做了泛化，绕开了"必须共现"这个限制。</p>
+      <div class="callout tip">
+        <p><b>这个反例的通用价值：</b>个性化模型不一定赢过强基线，尤其是在<b>交互稀疏</b>的数据上。所以做召回的第一件事不是上双塔，而是先量一下：人均交互多少？物品覆盖分布长什么样？如果人均 &lt; 2 次，先把热门、内容标签、语义召回做扎实，再谈协同过滤和向量召回。</p>
+      </div>
+<h2 id="myths"><span class="kicker">F · PITFALLS</span>七条常见误区，每一条都有人栽过</h2>
+
+      <div class="callout danger">
+        <p><b>误区 1：模型越深越好。</b>这句话在 CV/NLP 里接近正确，在搜广推里经常是错的。项目一的证据很直接：LR 0.8473 → DIN 0.8584，换了三代模型，只换来 1.11 个点；而把"热门召回"换成"双塔召回"，Recall@100 从 9.66% 提到 11.29%，涨了 16.9%（相对值）。<b>在特征和样本没做好的时候，换模型是性价比最低的动作。</b>而且深模型带来的是延迟、内存、部署复杂度三倍上涨。</p>
+      </div>
+
+      <div class="callout warn">
+        <p><b>误区 2：把 AUC 当唯一指标。</b>AUC 只看排序，不看概率大小。DIN 的 AUC 最高（0.8584），但它的预测均值 0.1527 比真实 CTR 0.1378 高 10.8%——如果直接拿这个 pCTR 去算 eCPM，出价会被系统性高估。广告场景必须同时看 LogLoss 和校准曲线；内容场景还要看人均时长、完播率、多样性，因为 AUC 涨了但推荐全是同一类内容，用户体验是下降的。</p>
+      </div>
+
+      <div class="callout warn">
+        <p><b>误区 3：召回和排序用同一套评估。</b>召回看 Recall@K / 覆盖率，排序看 AUC / LogLoss / 校准，重排看多样性 / 打散满足率。拿 AUC 去评估召回是错的——召回模型输出的是内积分数，不是概率，AUC 没有业务含义；反过来，用 Recall@K 评估精排也没有意义，因为精排的输入已经被截断了。<b>每一层用自己的指标，且要能串起来解释最终业务指标。</b></p>
+      </div>
+
+      <div class="callout danger">
+        <p><b>误区 4：忽略负样本的定义。</b>什么是负样本，直接决定模型学什么。"曝光未点击"是负样本，但"曝光了但用户根本没看到（在屏幕外）"不该算负样本；"点了但立刻退出"算正样本还是负样本？E-commerce 里"下单未支付"算不算转化？这些问题没有标准答案，但必须<b>写进文档、和业务对齐、并在特征和损失里体现</b>。项目一人均点击 1.16 次，如果再把"曝光未点击"随意下采样，正负比会彻底失真，模型输出的概率就没法用。</p>
+      </div>
+
+      <div class="callout warn">
+        <p><b>误区 5：离线涨了就直接上线，不做 A/B。</b>离线 AUC +0.003 在统计上可能不显著，线上可能因为延迟增加 5ms 导致整体指标下降。正确流程是：离线 AUC + 校准 + 分天稳定性 → 小流量 A/B（看核心指标和护栏指标）→ 扩量。A/B 的样本量要提前算，不能跑两天看着"涨了"就全量。</p>
+      </div>
+
+      <div class="callout warn">
+        <p><b>误区 6：多路召回，路越多越好。</b>每加一路都会带来过滤成本、去重逻辑、分数融合的复杂度。判断标准是<b>边际 Recall 增益</b>：加这一路，Recall@K 涨了多少？如果只涨 0.3%，但它贡献了大量重复候选和线上耗时，就该砍。项目一里三路召回各有明确的定位（兜底 / 长尾覆盖 / 个性化），不是因为"别人都有"才加的。</p>
+      </div>
+
+      <div class="callout danger">
+        <p><b>误区 7：离线指标异常高，先庆祝再上线。</b>AUC 突然从 0.85 跳到 0.95，第一反应应该是"我是不是用了未来信息"，而不是"我的模型真强"。最典型的特征穿越：用"视频 7 日 CTR"预测第 3 天的点击；用"订单最终状态"预测下单；用全量统计的归一化参数处理训练样本。上线前逐个特征问一遍"这个值在样本产生的那一刻算得出来吗"，能省掉一次事故。</p>
+      </div>
+
+      <h2 id="recap"><span class="kicker">RECAP</span>一页速记：这一章到底该记住什么</h2>
+      <p class="lead">如果合上页面只允许你记六句话，记这六句。每句都能往回找到整节内容。</p>
+      <div class="card">
+        <ol>
+          <li><b>为什么分层：</b>候选 10<sup>5</sup>~10<sup>7</sup>，精排单条 0.8ms，全量打分延迟直接爆掉。所以先便宜地捞（召回 10~30ms），再贵地排。<b>召回决定天花板，排序决定够不够得着。</b></li>
+          <li><b>召回看三件事：</b>能捞多少（Recall@K）、捞得全不全（覆盖率）、捞得贵不贵（延迟）。项目一：热门 9.66% / 覆盖 2.00%，ItemCF 4.12% / 覆盖 86.92%，双塔 11.29% / 覆盖 11.54%——三个数各有短板，这才需要多路互补。</li>
+          <li><b>排序一条主线：</b>LR（线性，0.8473）→ GBDT+LR（树造交叉，两段训练）→ FM（二阶交叉可泛化，0.8501）→ DeepFM（端到端，0.8520）→ DIN（行为序列注意力，0.8584）→ DIEN / MMOE（兴趣演化与多目标）。</li>
+          <li><b>每个模型只回答三问：</b>补上一代哪个窟窿、代价是什么、什么时候<b>不该</b>用它。答不出第三问，说明只是背过结构。</li>
+          <li><b>三个必须能算的账：</b>延迟账（候选数 × 单条耗时）、样本账（正负比、负采样方式）、特征账（这个值在样本产生那一刻算得出来吗）。</li>
+          <li><b>AUC 涨了线上不涨，先别改模型：</b>按"特征穿越 → 样本偏差 → 位置偏差 → 链路不一致 → 指标不等于业务 → 实验设计"的顺序排查，前三个最常见。</li>
+        </ol>
+      </div>
+
+      <h2 id="quiz"><span class="kicker">CHECK</span>自测：能答上来才算真懂</h2>
+      <p class="small">先自己说一遍，再展开对照。答不出来的，回到对应小节。</p>
+
+      <details class="qa">
+        <summary>Q1：为什么召回和排序必须分成两层？只用精排模型对全库打分不行吗？</summary>
+        <div class="ans">
+          <p>三层原因：<b>①量级</b>——全库 10<sup>5</sup>~10<sup>7</sup>，精排单条 0.8ms，光计算就要几百秒，而接口预算只有 100ms；<b>②模型形态</b>——精排要吃行为序列、交叉特征，这些特征必须"逐候选"拼接，无法预先算好；召回用双塔可以离线算物品向量、在线算一次用户向量，成本差几个数量级；<b>③目标不同</b>——召回要"别漏"（Recall@K），排序要"排得准"（AUC/校准），用同一个模型同时优化两个目标会互相拖累。</p>
+          <p>可以只用一个模型的特例：候选量很小（比如几千条）且延迟宽松的场景，可以直接用精排打分，但工业界主流内容/电商场景都不成立。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q2：FM 的公式是什么？它为什么能处理稀疏特征，复杂度怎么从 O(n²k) 降到 O(nk)？</summary>
+        <div class="ans">
+          <p><code>y = w₀ + Σwᵢxᵢ + ΣΣ&lt;vᵢ,vⱼ&gt;xᵢxⱼ</code>，其中 <code>&lt;vᵢ,vⱼ&gt; = Σ_f v_{i,f}·v_{j,f}</code>。</p>
+          <p>稀疏场景下，组合 (i,j) 的样本可能只有几十条，独立权重学不出来；FM 用两个特征的隐向量内积表示组合权重，参数共享让"25 岁"和"游戏"各自的向量能从所有相关样本里学习，即使两者从未共现也能泛化。</p>
+          <p>复杂度：朴素枚举 (i,j) 是 O(n²k)。用恒等式 <code>Σ_{i&lt;j}&lt;vᵢ,vⱼ&gt;xᵢxⱼ = ½[(Σvᵢxᵢ)² − Σvᵢ²xᵢ²]</code>，先算一次加权向量和（O(nk)），再逐元素平方相减（O(nk)），整体 O(nk)。注意是恒等变形，不是近似；第二项必须逐元素平方。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q3：DIN 的 attention 里，query、key、value 分别是什么？为什么不能像 DeepFM 一样对行为做 sum pooling？</summary>
+        <div class="ans">
+          <p>query = 候选物品 embedding <code>e_a</code>；key = 历史行为 embedding <code>e_j</code>；value 也是 <code>e_j</code>（所以是 self-attention 的变体，key 和 value 同源）。打分函数是 <code>MLP([e_j, e_a, e_j⊙e_a])</code>，在序列维度上 softmax 得到权重，加权求和得到用户表示 <code>v_u(A)</code>。</p>
+          <p>sum pooling 得到的是固定向量，与候选无关；但用户兴趣是多峰的（既看健身也看美食），推荐减脂餐时应该更关注健身行为。注意力让用户表示随候选变化，这是 DIN 的增量。代价是每个候选都要算一遍，成本高，只能在精排用。项目一人均序列 1.16 次，注意力退化成取最近一条，所以只涨 0.0064。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q4：ESMM 解决什么问题？MMOE 和 PLE 的区别是什么？</summary>
+        <div class="ans">
+          <p>ESMM 解决 CVR 建模的两个偏差：<b>样本选择偏差</b>（CVR 只能在点击样本上训练，却要在全量曝光上预测）和<b>数据稀疏</b>（点击样本本来就少）。做法是不直接学 pCVR，而是学 <code>pCTCVR = pCTR × pCVR</code>，在<b>全量曝光样本</b>上同时算 CTR 和 CTCVR 两个损失，两个子网络共享 embedding。</p>
+          <p>MMOE：所有任务共享同一组 expert，每个任务用各自的 gate 做 softmax 加权，缓解硬共享的负迁移。PLE：在 MMOE 基础上增加"任务专属 expert"，只让共享 expert 学共性，进一步缓解任务相关性低时的 seesaw（一个任务涨、另一个任务跌）。代价是参数量随任务数增长。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q5：离线 AUC 从 0.847 涨到 0.858，线上却没涨，你会按什么顺序排查？</summary>
+        <div class="ans">
+          <p>按"最可能且最容易验证"排序：<b>①特征穿越</b>——逐个特征核对时间戳，确认样本产生时该特征可算；<b>②链路不一致</b>——抽样比对离线/线上同一 key 的特征值，尤其是实时特征；<b>③位置偏差</b>——训练时带位置特征，线上重排后位置分布变了，模型失效；<b>④样本偏差/分布漂移</b>——按天看 AUC，看训练集 item 分布和线上曝光分布是否一致；<b>⑤指标口径</b>——离线算 AUC 的样本集和线上考核口径是否一致（是否含重复曝光、是否只算点击样本）；<b>⑥统计显著性</b>——A/B 样本量够不够，0.003 的提升可能只是噪声。</p>
+          <p>补充一个容易被忽略的：<b>延迟增加</b>。新模型慢 10ms 导致超时降级，实际效果会被链路吃掉，指标自然不涨。</p>
+        </div>
+      </details>
+
+      <p class="small">如果你能把 Q2 的公式推导、Q3 的三个角色、Q5 的排查顺序完整讲出来，这一章的核心就掌握了。下一章进入工程：100ms 怎么分配、特征怎么保证线上线下一致、指标跌了从哪查。</p>
+
+      <div class="pager">
+        <a href="basics.html"><span>上一篇</span><b>01 · 搜广推全景、概念体系与数据</b></a>
+        <a class="next" href="system.html"><span>下一篇</span><b>03 · 系统工程与踩坑手册 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/main.js"></script>
+<script>
+(function () {
+  /* 数据源：data/p1_metrics.json —— 数字与文件逐项一致，仅 auc×100 用于纵轴显示 */
+  var MODELS = [
+    { model: "全局均值基线", auc: 0.5, logloss: 0.401, pctr_mean: 0.1383, ctr_true: 0.1378 },
+    { model: "LR（独热特征）", auc: 0.8473, logloss: 0.2939, pctr_mean: 0.1381, ctr_true: 0.1378 },
+    { model: "FM", auc: 0.8501, logloss: 0.2913, pctr_mean: 0.1387, ctr_true: 0.1378 },
+    { model: "DeepFM", auc: 0.852, logloss: 0.2905, pctr_mean: 0.1446, ctr_true: 0.1378 },
+    { model: "DIN（简化版）", auc: 0.8584, logloss: 0.2867, pctr_mean: 0.1527, ctr_true: 0.1378 }
+  ];
+
+  var FM_CURVE = [
+    { epoch: 1, auc: 0.8387, logloss: 0.3003 },
+    { epoch: 2, auc: 0.8469, logloss: 0.2946 },
+    { epoch: 3, auc: 0.8484, logloss: 0.2931 },
+    { epoch: 4, auc: 0.8493, logloss: 0.2925 },
+    { epoch: 5, auc: 0.8496, logloss: 0.2919 },
+    { epoch: 6, auc: 0.8501, logloss: 0.2913 }
+  ];
+  var DEEPFM_CURVE = [
+    { epoch: 1, auc: 0.8466, logloss: 0.2947 },
+    { epoch: 2, auc: 0.8484, logloss: 0.2936 },
+    { epoch: 3, auc: 0.8499, logloss: 0.2921 },
+    { epoch: 4, auc: 0.8508, logloss: 0.2913 },
+    { epoch: 5, auc: 0.8514, logloss: 0.2907 },
+    { epoch: 6, auc: 0.852, logloss: 0.2905 }
+  ];
+  var DIN_CURVE = [
+    { epoch: 1, auc: 0.8507, logloss: 0.2918 },
+    { epoch: 2, auc: 0.8533, logloss: 0.2899 },
+    { epoch: 3, auc: 0.855, logloss: 0.2884 },
+    { epoch: 4, auc: 0.8571, logloss: 0.2879 },
+    { epoch: 5, auc: 0.8581, logloss: 0.2865 },
+    { epoch: 6, auc: 0.8584, logloss: 0.2867 }
+  ];
+
+  var RETRIEVAL = [
+    { method: "热门召回", recall: 0.0966, coverage: 0.02 },
+    { method: "ItemCF", recall: 0.0412, coverage: 0.8692 },
+    { method: "双塔向量召回", recall: 0.1129, coverage: 0.1154 }
+  ];
+
+  /* ① 模型 AUC 对比：纵轴用 AUC×100，便于看清 0.85 附近的差异 */
+  var aucData = MODELS.map(function (m) {
+    return { name: m.model.replace("（独热特征）", "").replace("（简化版）", ""), auc: +(m.auc * 100).toFixed(2) };
+  });
+  Chart.groupBar("#chart-auc", aucData, {
+    keys: [{ key: "auc", label: "AUC ×100（即百分点）", color: "#4f46e5" }],
+    max: 100,
+    format: "float",
+    height: 300,
+    title: "五个排序模型的 AUC 对比",
+    caption: "<b>图 1</b> · 同一测试集上的 AUC ×100。基线 50.00 → LR 84.73 → DIN 85.84；后三代的差距不到 1.2 个百分点。"
+  });
+
+  /* ② 三个模型的训练曲线 */
+  var curveData = FM_CURVE.map(function (d, i) {
+    return {
+      epoch: d.epoch,
+      FM: d.auc,
+      DeepFM: DEEPFM_CURVE[i].auc,
+      DIN: DIN_CURVE[i].auc
+    };
+  });
+  Chart.line("#chart-curve", curveData, {
+    keys: [
+      { key: "FM", label: "FM", color: "#4f46e5" },
+      { key: "DeepFM", label: "DeepFM", color: "#0d9488" },
+      { key: "DIN", label: "DIN（简化版）", color: "#f59e0b" }
+    ],
+    xKey: "epoch",
+    min: 0.83,
+    max: 0.862,
+    height: 300,
+    title: "FM / DeepFM / DIN 六个 epoch 的验证集 AUC",
+    caption: "<b>图 2</b> · 每轮验证集 AUC。三条线在第 5 个 epoch 后基本走平，DIN 第 6 轮相对第 5 轮仅 +0.0003。"
+  });
+
+  /* ③ 召回 Recall@100 对比 */
+  Chart.bars("#chart-recall", RETRIEVAL, {
+    valueKey: "recall",
+    nameKey: "method",
+    format: "pct",
+    labelFormat: "pct",
+    max: 0.15,
+    height: 230,
+    color: "#0d9488",
+    title: "三路召回 Recall@100 对比",
+    caption: "<b>图 3</b> · Recall@100：双塔 11.29% > 热门 9.66% > ItemCF 4.12%。热门覆盖率仅 2.00%，ItemCF 覆盖率高达 86.92%——覆盖广不等于命中准。"
+  });
+})();
+</script>
+</body>
+</html>

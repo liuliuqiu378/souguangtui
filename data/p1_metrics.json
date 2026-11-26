@@ -1,0 +1,792 @@
+{
+ "dataset": {
+  "users": 20000,
+  "items": 5000,
+  "events": 317866,
+  "ctr": 0.1382,
+  "finish_rate": 0.573,
+  "like_rate": 0.1264,
+  "days": 30,
+  "avg_seq_len": 1.16
+ },
+ "models": [
+  {
+   "model": "全局均值基线",
+   "auc": 0.5,
+   "logloss": 0.401,
+   "pctr_mean": 0.1383,
+   "ctr_true": 0.1378
+  },
+  {
+   "model": "LR（独热特征）",
+   "auc": 0.8473,
+   "logloss": 0.2939,
+   "pctr_mean": 0.1381,
+   "ctr_true": 0.1378
+  },
+  {
+   "model": "FM",
+   "auc": 0.8501,
+   "logloss": 0.2913,
+   "pctr_mean": 0.1387,
+   "ctr_true": 0.1378
+  },
+  {
+   "model": "DeepFM",
+   "auc": 0.852,
+   "logloss": 0.2905,
+   "pctr_mean": 0.1446,
+   "ctr_true": 0.1378
+  },
+  {
+   "model": "DIN（简化版）",
+   "auc": 0.8584,
+   "logloss": 0.2867,
+   "pctr_mean": 0.1527,
+   "ctr_true": 0.1378
+  }
+ ],
+ "curves": {
+  "FM": [
+   {
+    "epoch": 1,
+    "auc": 0.8387,
+    "logloss": 0.3003
+   },
+   {
+    "epoch": 2,
+    "auc": 0.8469,
+    "logloss": 0.2946
+   },
+   {
+    "epoch": 3,
+    "auc": 0.8484,
+    "logloss": 0.2931
+   },
+   {
+    "epoch": 4,
+    "auc": 0.8493,
+    "logloss": 0.2925
+   },
+   {
+    "epoch": 5,
+    "auc": 0.8496,
+    "logloss": 0.2919
+   },
+   {
+    "epoch": 6,
+    "auc": 0.8501,
+    "logloss": 0.2913
+   }
+  ],
+  "DeepFM": [
+   {
+    "epoch": 1,
+    "auc": 0.8466,
+    "logloss": 0.2947
+   },
+   {
+    "epoch": 2,
+    "auc": 0.8484,
+    "logloss": 0.2936
+   },
+   {
+    "epoch": 3,
+    "auc": 0.8499,
+    "logloss": 0.2921
+   },
+   {
+    "epoch": 4,
+    "auc": 0.8508,
+    "logloss": 0.2913
+   },
+   {
+    "epoch": 5,
+    "auc": 0.8514,
+    "logloss": 0.2907
+   },
+   {
+    "epoch": 6,
+    "auc": 0.852,
+    "logloss": 0.2905
+   }
+  ],
+  "DIN（简化版）": [
+   {
+    "epoch": 1,
+    "auc": 0.8507,
+    "logloss": 0.2918
+   },
+   {
+    "epoch": 2,
+    "auc": 0.8533,
+    "logloss": 0.2899
+   },
+   {
+    "epoch": 3,
+    "auc": 0.855,
+    "logloss": 0.2884
+   },
+   {
+    "epoch": 4,
+    "auc": 0.8571,
+    "logloss": 0.2879
+   },
+   {
+    "epoch": 5,
+    "auc": 0.8581,
+    "logloss": 0.2865
+   },
+   {
+    "epoch": 6,
+    "auc": 0.8584,
+    "logloss": 0.2867
+   }
+  ]
+ },
+ "retrieval": [
+  {
+   "method": "热门召回（Top100）",
+   "recall": 0.0966,
+   "coverage": 0.02
+  },
+  {
+   "method": "ItemCF（Top100）",
+   "recall": 0.0412,
+   "coverage": 0.8692
+  },
+  {
+   "method": "双塔向量召回（Top100）",
+   "recall": 0.1129,
+   "coverage": 0.1154
+  }
+ ],
+ "charts": {
+  "cat_ctr": [
+   {
+    "name": "搞笑",
+    "rate": 0.2507,
+    "expo": 40419
+   },
+   {
+    "name": "美食",
+    "rate": 0.2176,
+    "expo": 32182
+   },
+   {
+    "name": "游戏",
+    "rate": 0.1677,
+    "expo": 36509
+   },
+   {
+    "name": "影视",
+    "rate": 0.1284,
+    "expo": 33706
+   },
+   {
+    "name": "音乐",
+    "rate": 0.1078,
+    "expo": 26671
+   },
+   {
+    "name": "健身",
+    "rate": 0.0823,
+    "expo": 19664
+   },
+   {
+    "name": "科技",
+    "rate": 0.075,
+    "expo": 25678
+   },
+   {
+    "name": "萌宠",
+    "rate": 0.0686,
+    "expo": 32802
+   },
+   {
+    "name": "旅行",
+    "rate": 0.0686,
+    "expo": 14842
+   },
+   {
+    "name": "美妆",
+    "rate": 0.1028,
+    "expo": 27650
+   },
+   {
+    "name": "教育",
+    "rate": 0.127,
+    "expo": 15650
+   },
+   {
+    "name": "汽车",
+    "rate": 0.151,
+    "expo": 12093
+   }
+  ],
+  "hour_ctr": [
+   {
+    "name": "0-6点",
+    "n": 9593,
+    "rate": 0.134
+   },
+   {
+    "name": "7-9点",
+    "n": 47663,
+    "rate": 0.1398
+   },
+   {
+    "name": "10-12点",
+    "n": 40988,
+    "rate": 0.1324
+   },
+   {
+    "name": "13-17点",
+    "n": 70096,
+    "rate": 0.1411
+   },
+   {
+    "name": "18-20点",
+    "n": 76058,
+    "rate": 0.1379
+   },
+   {
+    "name": "21-24点",
+    "n": 73468,
+    "rate": 0.1386
+   }
+  ],
+  "position_ctr": [
+   {
+    "name": "第1位",
+    "n": 79559,
+    "rate": 0.1528
+   },
+   {
+    "name": "第2位",
+    "n": 79757,
+    "rate": 0.1414
+   },
+   {
+    "name": "第3位",
+    "n": 79269,
+    "rate": 0.1326
+   },
+   {
+    "name": "第4位",
+    "n": 79281,
+    "rate": 0.1259
+   }
+  ],
+  "duration_ctr": [
+   {
+    "name": "0-15s",
+    "rate": 0.1331
+   },
+   {
+    "name": "15-30s",
+    "rate": 0.1371
+   },
+   {
+    "name": "30-60s",
+    "rate": 0.1411
+   },
+   {
+    "name": "1-3min",
+    "rate": 0.1386
+   },
+   {
+    "name": "3min+",
+    "rate": 0.1416
+   }
+  ],
+  "age_ctr": [
+   {
+    "name": "18-24",
+    "n": 64129,
+    "rate": 0.1365
+   },
+   {
+    "name": "25-29",
+    "n": 82486,
+    "rate": 0.1424
+   },
+   {
+    "name": "30-34",
+    "n": 70363,
+    "rate": 0.1427
+   },
+   {
+    "name": "35-39",
+    "n": 44761,
+    "rate": 0.1293
+   },
+   {
+    "name": "40-49",
+    "n": 36986,
+    "rate": 0.1352
+   },
+   {
+    "name": "50+",
+    "n": 19141,
+    "rate": 0.1363
+   }
+  ],
+  "quality_ctr": [
+   {
+    "name": "Q1",
+    "rate": 0.1185
+   },
+   {
+    "name": "Q2",
+    "rate": 0.1308
+   },
+   {
+    "name": "Q3",
+    "rate": 0.1417
+   },
+   {
+    "name": "Q4",
+    "rate": 0.145
+   },
+   {
+    "name": "Q5",
+    "rate": 0.1534
+   }
+  ],
+  "fresh_ctr": [
+   {
+    "name": "当天",
+    "rate": 0.1595
+   },
+   {
+    "name": "1-3天",
+    "rate": 0.1519
+   },
+   {
+    "name": "4-7天",
+    "rate": 0.1381
+   },
+   {
+    "name": "8-30天",
+    "rate": 0.1228
+   },
+   {
+    "name": "30天+",
+    "rate": 0.1074
+   }
+  ],
+  "funnel": [
+   {
+    "name": "曝光",
+    "value": 317866
+   },
+   {
+    "name": "点击",
+    "value": 43933
+   },
+   {
+    "name": "完播",
+    "value": 25174
+   },
+   {
+    "name": "点赞",
+    "value": 5555
+   }
+  ],
+  "user_active": [
+   {
+    "name": "L1",
+    "n": 2042
+   },
+   {
+    "name": "L2",
+    "n": 3596
+   },
+   {
+    "name": "L3",
+    "n": 5109
+   },
+   {
+    "name": "L4",
+    "n": 5169
+   },
+   {
+    "name": "L5",
+    "n": 4084
+   }
+  ],
+  "new_user_ctr": [
+   {
+    "name": "新用户(注册<7天)",
+    "rate": 0.1468
+   },
+   {
+    "name": "老用户",
+    "rate": 0.1382
+   }
+  ],
+  "duration_dist": [
+   {
+    "name": "0-15s",
+    "n": 732
+   },
+   {
+    "name": "15-30s",
+    "n": 1782
+   },
+   {
+    "name": "30-60s",
+    "n": 1734
+   },
+   {
+    "name": "1-3min",
+    "n": 666
+   },
+   {
+    "name": "3min+",
+    "n": 86
+   }
+  ],
+  "seq_dist": [
+   {
+    "name": "0",
+    "n": 156359
+   },
+   {
+    "name": "1-3",
+    "n": 132063
+   },
+   {
+    "name": "4-10",
+    "n": 29444
+   }
+  ],
+  "long_tail": [
+   {
+    "name": "头部 1%",
+    "share": 0.0315
+   },
+   {
+    "name": "头部 5%",
+    "share": 0.1242
+   },
+   {
+    "name": "头部 10%",
+    "share": 0.2165
+   },
+   {
+    "name": "头部 20%",
+    "share": 0.368
+   },
+   {
+    "name": "头部 50%",
+    "share": 0.6995
+   }
+  ],
+  "calibration": [
+   {
+    "pred": 0.004,
+    "true": 0.005,
+    "n": 5558
+   },
+   {
+    "pred": 0.0112,
+    "true": 0.0133,
+    "n": 5558
+   },
+   {
+    "pred": 0.0208,
+    "true": 0.0221,
+    "n": 5558
+   },
+   {
+    "pred": 0.0338,
+    "true": 0.0347,
+    "n": 5558
+   },
+   {
+    "pred": 0.0524,
+    "true": 0.0459,
+    "n": 5557
+   },
+   {
+    "pred": 0.0818,
+    "true": 0.07,
+    "n": 5558
+   },
+   {
+    "pred": 0.1307,
+    "true": 0.1126,
+    "n": 5558
+   },
+   {
+    "pred": 0.2109,
+    "true": 0.1745,
+    "n": 5558
+   },
+   {
+    "pred": 0.3505,
+    "true": 0.3057,
+    "n": 5558
+   },
+   {
+    "pred": 0.631,
+    "true": 0.5943,
+    "n": 5558
+   }
+  ]
+ },
+ "samples": {
+  "events": [
+   {
+    "user_id": 0,
+    "req_seq": 1,
+    "ts": "2026-09-01T01:42:00",
+    "item_id": 959,
+    "position": 4,
+    "hour_bucket": 4,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 2,
+    "ts": "2026-09-01T02:01:00",
+    "item_id": 3179,
+    "position": 4,
+    "hour_bucket": 5,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 3,
+    "ts": "2026-09-01T03:03:00",
+    "item_id": 590,
+    "position": 4,
+    "hour_bucket": 3,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 4,
+    "ts": "2026-09-01T03:44:00",
+    "item_id": 2518,
+    "position": 4,
+    "hour_bucket": 4,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 5,
+    "ts": "2026-09-01T04:17:00",
+    "item_id": 3724,
+    "position": 4,
+    "hour_bucket": 1,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 6,
+    "ts": "2026-09-01T05:07:00",
+    "item_id": 1695,
+    "position": 1,
+    "hour_bucket": 5,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 7,
+    "ts": "2026-09-01T05:45:00",
+    "item_id": 4998,
+    "position": 2,
+    "hour_bucket": 5,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   },
+   {
+    "user_id": 0,
+    "req_seq": 8,
+    "ts": "2026-09-01T06:11:00",
+    "item_id": 4106,
+    "position": 4,
+    "hour_bucket": 2,
+    "click": 0,
+    "finish": 0,
+    "like": 0,
+    "play_ratio": 0.0
+   }
+  ],
+  "users": [
+   {
+    "user_id": 0,
+    "age_bucket": 0,
+    "gender": 1,
+    "city_tier": 4,
+    "active_level": 3,
+    "interest_0": "健身",
+    "interest_1": "旅行",
+    "register_days": 238,
+    "is_new": 0
+   },
+   {
+    "user_id": 1,
+    "age_bucket": 4,
+    "gender": 0,
+    "city_tier": 4,
+    "active_level": 4,
+    "interest_0": "游戏",
+    "interest_1": "汽车",
+    "register_days": 1130,
+    "is_new": 0
+   },
+   {
+    "user_id": 2,
+    "age_bucket": 1,
+    "gender": 1,
+    "city_tier": 3,
+    "active_level": 2,
+    "interest_0": "汽车",
+    "interest_1": "教育",
+    "register_days": 992,
+    "is_new": 0
+   },
+   {
+    "user_id": 3,
+    "age_bucket": 0,
+    "gender": 1,
+    "city_tier": 4,
+    "active_level": 3,
+    "interest_0": "美食",
+    "interest_1": "美妆",
+    "register_days": 1091,
+    "is_new": 0
+   },
+   {
+    "user_id": 4,
+    "age_bucket": 2,
+    "gender": 0,
+    "city_tier": 4,
+    "active_level": 3,
+    "interest_0": "游戏",
+    "interest_1": "影视",
+    "register_days": 269,
+    "is_new": 0
+   },
+   {
+    "user_id": 5,
+    "age_bucket": 3,
+    "gender": 1,
+    "city_tier": 2,
+    "active_level": 4,
+    "interest_0": "游戏",
+    "interest_1": "科技",
+    "register_days": 785,
+    "is_new": 1
+   }
+  ],
+  "items": [
+   {
+    "item_id": 0,
+    "category": "美食",
+    "creator_id": 220,
+    "duration_bucket": "30-60s",
+    "duration_sec": 147.1,
+    "publish_days": 1,
+    "quality_score": 0.605,
+    "ctr_7d": 0.3333,
+    "finish_rate": 0.6667
+   },
+   {
+    "item_id": 1,
+    "category": "搞笑",
+    "creator_id": 50,
+    "duration_bucket": "15-30s",
+    "duration_sec": 66.9,
+    "publish_days": 10,
+    "quality_score": 0.202,
+    "ctr_7d": 0.3125,
+    "finish_rate": 0.3
+   },
+   {
+    "item_id": 2,
+    "category": "科技",
+    "creator_id": 38,
+    "duration_bucket": "1-3min",
+    "duration_sec": 214.6,
+    "publish_days": 1,
+    "quality_score": 0.335,
+    "ctr_7d": 0.1739,
+    "finish_rate": 0.25
+   },
+   {
+    "item_id": 3,
+    "category": "游戏",
+    "creator_id": 70,
+    "duration_bucket": "30-60s",
+    "duration_sec": 147.3,
+    "publish_days": 0,
+    "quality_score": 0.69,
+    "ctr_7d": 0.1325,
+    "finish_rate": 0.6818
+   },
+   {
+    "item_id": 4,
+    "category": "搞笑",
+    "creator_id": 87,
+    "duration_bucket": "15-30s",
+    "duration_sec": 85.8,
+    "publish_days": 1,
+    "quality_score": 0.826,
+    "ctr_7d": 0.1717,
+    "finish_rate": 0.7941
+   },
+   {
+    "item_id": 5,
+    "category": "美妆",
+    "creator_id": 143,
+    "duration_bucket": "30-60s",
+    "duration_sec": 155.6,
+    "publish_days": 0,
+    "quality_score": 0.441,
+    "ctr_7d": 0.0968,
+    "finish_rate": 1.0
+   }
+  ]
+ },
+ "feature_fields": [
+  "u_age",
+  "u_gender",
+  "u_city",
+  "u_active",
+  "u_int0",
+  "u_int1",
+  "i_cat",
+  "i_dur",
+  "i_creator",
+  "i_fresh",
+  "i_qual",
+  "ctx_hour",
+  "ctx_pos",
+  "x_int_cat"
+ ]
+}

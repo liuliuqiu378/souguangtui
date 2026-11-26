@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 3 章 · 系统工程与踩坑手册 · 搜广推：从 0 到能干活</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="system" data-title="系统工程与踩坑手册">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <section class="hero">
+        <h1>系统工程与踩坑手册：模型是怎么变成线上服务的</h1>
+        <p>很多人卡在这一步：离线 AUC 0.858，训得漂亮，上线后 CTR 一点没动，甚至跌了 3%。
+          这不是模型不行，是<strong style="color:#fff">系统没接对</strong>——特征取错了、位置偏差把离线分数抬高了、
+          精排超时被降级了、实验分流不均。<br>
+          这一章讲两件事：<strong style="color:#fff">一条请求进来，100ms 里发生了什么</strong>；
+          <strong style="color:#fff">指标不对时，按什么顺序查</strong>。</p>
+        <div class="tags">
+          <span>延迟预算 100ms</span><span>特征线上线下一致</span><span>灰度与回滚</span>
+          <span>13 条排查清单</span><span>归因树</span><span>6 道自查</span>
+        </div>
+      </section>
+
+      <div class="kpi">
+        <div class="item"><div class="v">100<small>ms</small></div><div class="l">首屏推荐 P99 总预算</div></div>
+        <div class="item"><div class="v">4<small> 层</small></div><div class="l">召回 → 粗排 → 精排 → 重排</div></div>
+        <div class="item"><div class="v">&lt;0.5<small>%</small></div><div class="l">线上特征缺失率红线</div></div>
+        <div class="item"><div class="v">30<small>s</small></div><div class="l">模型回滚目标时间</div></div>
+      </div>
+
+      <div class="callout tip">
+        <p><b>一句话结论：</b>推荐系统上线后，模型本身只决定效果上限，<b>特征口径、延迟预算、降级策略、实验分流</b>决定你能拿到多少。绝大多数「上线没效果」，问题都不在模型结构上。</p>
+      </div>
+
+      <div class="callout">
+        <p><b>这一页会反复出现的三个词，先解释掉：</b></p>
+        <p><b>P99</b>：把 100 次请求的耗时从快到慢排队，第 99 个的耗时。它比"平均耗时"更能反映用户体感——平均 30ms 但 P99 是 500ms，意味着每秒都有人在等半秒。</p>
+        <p><b>QPS</b>：每秒请求数（Queries Per Second），用来衡量并发压力；峰值 QPS 决定你要部署多少台机器。</p>
+        <p><b>降级</b>：某一步超时或报错时，退回一个更便宜但还能用的方案（比如精排超时就按粗排分数出结果），保证页面先出来，而不是白屏。</p>
+      </div>
+
+      <div class="toc">
+        <b>本章目录</b>
+        <ol>
+          <li><a href="#arch">在线架构全景与 100ms 延迟预算</a></li>
+          <li><a href="#feature">特征服务与线上线下一致性</a></li>
+          <li><a href="#deploy">模型上线：导出、热更新、灰度、回滚</a></li>
+          <li><a href="#ab">实验平台与指标：分流、显著性、离线在线鸿沟</a></li>
+          <li><a href="#troubleshoot">常见问题排查手册（13 条）</a></li>
+          <li><a href="#ads">广告场景专题：计费、预算、作弊</a></li>
+          <li><a href="#monitor">监控体系与指标下跌归因树</a></li>
+          <li><a href="#recap">一页速记：上线前六句话</a></li>
+          <li><a href="#quiz">自查：6 道必须答得上来的问题</a></li>
+        </ol>
+      </div>
+      <h2 id="arch"><span class="kicker">ARCHITECTURE</span>在线架构全景：一次请求的 100ms</h2>
+      <p class="lead">线上推荐不是一个模型，而是「一条串行主链路 + 三个旁路」。主链路决定延迟，旁路决定效果上限。</p>
+
+      <p>先记住候选集的数量级变化，后面所有设计都围绕它：<b>百万级物料库 → 召回取 2000 → 过滤剩 800 → 粗排 150 → 精排 50 → 重排出 10 条</b>。
+        每一步都在做同一件事：<b>用越来越贵的模型，算越来越少的候选</b>。粗排之所以存在，就是因为精排太贵，不能对 800 个候选都跑 DIN。</p>
+
+      <div class="chart">
+        <svg viewBox="0 0 900 400" role="img" aria-label="推荐系统在线架构图">
+          <defs>
+            <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 z" fill="#818cf8"/>
+            </marker>
+            <marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 z" fill="#94a3b8"/>
+            </marker>
+          </defs>
+
+          <!-- 主链路 -->
+          <g font-family="sans-serif">
+            <rect x="16" y="44" width="92" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="62" y="70" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">客户端</text>
+            <text x="62" y="88" text-anchor="middle" font-size="10" fill="#667085">首屏请求</text>
+            <text x="62" y="102" text-anchor="middle" font-size="10" fill="#98a2b3">含 user/设备</text>
+
+            <rect x="128" y="44" width="104" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="180" y="68" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">网关 / 接入</text>
+            <text x="180" y="85" text-anchor="middle" font-size="10" fill="#667085">鉴权 · 限流</text>
+            <text x="180" y="99" text-anchor="middle" font-size="10" fill="#667085">分流 · 预算下发</text>
+
+            <rect x="252" y="36" width="148" height="80" rx="9" fill="#eef0ff" stroke="#a5b4fc"/>
+            <text x="326" y="56" text-anchor="middle" font-size="12" font-weight="700" fill="#3730a3">召回（多路并行）</text>
+            <text x="326" y="74" text-anchor="middle" font-size="10" fill="#475467">热门 / ItemCF / 双塔 ANN</text>
+            <text x="326" y="90" text-anchor="middle" font-size="10" fill="#475467">万级 → 2000 候选</text>
+            <text x="326" y="106" text-anchor="middle" font-size="10" fill="#98a2b3">P99 20ms</text>
+
+            <rect x="420" y="44" width="92" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="466" y="68" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">过滤 / 规则</text>
+            <text x="466" y="85" text-anchor="middle" font-size="9.5" fill="#667085">去重 / 已读 / 名单</text>
+            <text x="466" y="99" text-anchor="middle" font-size="10" fill="#667085">2000 → 800</text>
+
+            <rect x="532" y="44" width="92" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="578" y="68" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">粗排</text>
+            <text x="578" y="85" text-anchor="middle" font-size="10" fill="#667085">双塔 / 小型 NN</text>
+            <text x="578" y="99" text-anchor="middle" font-size="10" fill="#667085">800 → 150</text>
+
+            <rect x="644" y="44" width="92" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="690" y="68" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">精排</text>
+            <text x="690" y="85" text-anchor="middle" font-size="10" fill="#667085">DIN / MMOE</text>
+            <text x="690" y="99" text-anchor="middle" font-size="10" fill="#667085">150 → 50</text>
+
+            <rect x="756" y="44" width="92" height="64" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="802" y="68" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">重排</text>
+            <text x="802" y="85" text-anchor="middle" font-size="10" fill="#667085">打散 · 多样性</text>
+            <text x="802" y="99" text-anchor="middle" font-size="10" fill="#667085">50 → 10</text>
+
+            <!-- 主链路箭头 -->
+            <g stroke="#818cf8" stroke-width="1.8" fill="none" marker-end="url(#ar)">
+              <path d="M108 76 H126"/><path d="M232 76 H250"/><path d="M400 76 H418"/>
+              <path d="M512 76 H530"/><path d="M624 76 H642"/><path d="M736 76 H754"/>
+            </g>
+
+            <!-- 返回 -->
+            <rect x="756" y="176" width="92" height="64" rx="9" fill="#e6f7f4" stroke="#5eead4"/>
+            <text x="802" y="200" text-anchor="middle" font-size="12" font-weight="700" fill="#0d9488">组装 &amp; 返回</text>
+            <text x="802" y="217" text-anchor="middle" font-size="10" fill="#475467">补全字段</text>
+            <text x="802" y="231" text-anchor="middle" font-size="10" fill="#98a2b3">JSON ~30KB</text>
+            <path d="M802 108 V174" stroke="#818cf8" stroke-width="1.8" fill="none" marker-end="url(#ar)"/>
+
+            <!-- 旁路：特征服务 / 模型服务 -->
+            <rect x="252" y="176" width="148" height="76" rx="9" fill="#fff" stroke="#fde68a"/>
+            <text x="326" y="198" text-anchor="middle" font-size="12" font-weight="700" fill="#b45309">特征服务</text>
+            <text x="326" y="215" text-anchor="middle" font-size="10" fill="#475467">Redis / FeatureStore</text>
+            <text x="326" y="229" text-anchor="middle" font-size="10" fill="#475467">用户 + 物品，批量取</text>
+            <text x="326" y="243" text-anchor="middle" font-size="10" fill="#98a2b3">P99 10~15ms</text>
+            <path d="M300 176 V115" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 3" fill="none" marker-end="url(#ar2)"/>
+
+            <rect x="420" y="176" width="204" height="76" rx="9" fill="#fff" stroke="#fde68a"/>
+            <text x="522" y="198" text-anchor="middle" font-size="12" font-weight="700" fill="#b45309">模型服务（粗排 / 精排）</text>
+            <text x="522" y="215" text-anchor="middle" font-size="10" fill="#475467">TF Serving · Triton · 自研</text>
+            <text x="522" y="229" text-anchor="middle" font-size="10" fill="#475467">动态 batch · 双版本并载</text>
+            <text x="522" y="243" text-anchor="middle" font-size="10" fill="#98a2b3">GPU / CPU 混布</text>
+            <g stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 3" fill="none" marker-end="url(#ar2)">
+              <path d="M400 210 H418"/>
+              <path d="M578 176 V112"/><path d="M690 176 V112"/>
+            </g>
+
+            <!-- 结果回传 -->
+            <path d="M802 240 V270 H62 V110" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ar2)"/>
+            <text x="430" y="264" text-anchor="middle" font-size="10" fill="#98a2b3">① 结果返回：首屏 10 条 + 追踪 ID</text>
+
+            <!-- 底部：实验 / 日志 / 监控 -->
+            <rect x="16" y="300" width="300" height="56" rx="9" fill="#f5f3ff" stroke="#ddd6fe"/>
+            <text x="166" y="322" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6d28d9">实验平台</text>
+            <text x="166" y="340" text-anchor="middle" font-size="10" fill="#5b21b6">桶位分配 · 分层互斥 · 曝光打点</text>
+            <path d="M166 300 V124 H180 V110" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ar2)"/>
+
+            <rect x="340" y="300" width="320" height="56" rx="9" fill="#fff" stroke="#e4e8f0"/>
+            <text x="500" y="322" text-anchor="middle" font-size="11.5" font-weight="700" fill="#475467">日志回流</text>
+            <text x="500" y="340" text-anchor="middle" font-size="10" fill="#667085">Kafka → Hive（T+1）→ 样本 / 特征 / 报表</text>
+            <path d="M802 240 V328 H662" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ar2)"/>
+
+            <rect x="684" y="300" width="164" height="56" rx="9" fill="#fff" stroke="#e4e8f0"/>
+            <text x="766" y="322" text-anchor="middle" font-size="11.5" font-weight="700" fill="#475467">监控 &amp; 告警</text>
+            <text x="766" y="340" text-anchor="middle" font-size="10" fill="#667085">业务 / 系统 / 模型 / 数据</text>
+            <path d="M660 328 H682" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#ar2)"/>
+          </g>
+        </svg>
+        <div class="cap">实线是同步主链路（计入 100ms 预算）；虚线是旁路或异步链路（不计入首屏延迟，但决定模型能学到什么）。</div>
+      </div>
+
+      <h3>每一层到底在干什么</h3>
+      <p>下面的 QPS 按「100 万 DAU、人均 20 次刷新」估算：日请求 2000 万，平均 <b>230 QPS</b>，晚高峰按 4 倍算约 <b>1000 QPS</b>。这个量级的中型系统，单机 8 核 + 一块 T4 就能撑住精排。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>职责</th><th>输入 → 输出</th><th>峰值 QPS</th><th>P99 预算</th><th>常见实现</th></tr></thead>
+          <tbody>
+            <tr><td><b>接入 / 网关</b></td><td>鉴权、限流、实验分流、把剩余 deadline 写进上下文</td><td>1 次请求 → 1 个请求上下文</td><td class="tnum">1000</td><td>2ms（含在网络 20ms 内）</td><td>Go / Envoy / Nginx</td></tr>
+            <tr><td><b>召回</b></td><td>从全库里快速捞出「可能相关」的千级候选，宁滥勿缺</td><td>user + context → 2000 个 item_id</td><td class="tnum">3×1000</td><td class="tnum">20ms</td><td>Faiss / HNSW / KV 倒排</td></tr>
+            <tr><td><b>过滤 / 规则</b></td><td>去重、已读、下架、地域年龄、广告预算，硬约束必须在这层做</td><td>2000 → 800</td><td class="tnum">1000</td><td>≤3ms（含在召回 20ms 内）</td><td>内存规则引擎</td></tr>
+            <tr><td><b>粗排</b></td><td>用便宜模型砍掉 80% 候选，目标是「不漏掉好的」而不是「排得准」</td><td>800 → 150</td><td class="tnum">1000</td><td class="tnum">15ms</td><td>双塔内积 / 小型 DeepFM（CPU）</td></tr>
+            <tr><td><b>精排</b></td><td>多目标预估（CTR / CVR / 时长），把预算最贵的算力花在 50~150 个候选上</td><td>150 → 50 个带分数的 item</td><td class="tnum">1000</td><td class="tnum">40ms</td><td>DIN / MMOE（GPU，batch 16~32）</td></tr>
+            <tr><td><b>重排</b></td><td>打散、多样性、业务加权、广告插入、首屏位置分配</td><td>50 → 10（有序列表）</td><td class="tnum">1000</td><td class="tnum">5ms</td><td>规则 + MMR / DPP</td></tr>
+            <tr><td><b>组装返回</b></td><td>补全标题/封面/作者，拼 JSON，打 trace_id</td><td>10 个 id → 30KB JSON</td><td class="tnum">1000</td><td class="tnum">计入 20ms</td><td>批量查 KV，禁止 N+1</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="chart" id="lat-chart"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>阶段</th><th>P99 预算</th><th>实际超时设置（×1.2）</th><th>备注</th></tr></thead>
+          <tbody>
+            <tr><td>召回（多路并行）</td><td class="tnum">20ms</td><td class="tnum">24ms</td><td>3 路并行取结果，单路超时只丢该路</td></tr>
+            <tr><td>粗排</td><td class="tnum">15ms</td><td class="tnum">18ms</td><td>CPU 推理，batch 内积</td></tr>
+            <tr><td>精排</td><td class="tnum">40ms</td><td class="tnum">48ms</td><td>最大的一块，GPU 排队时优先降级</td></tr>
+            <tr><td>重排</td><td class="tnum">5ms</td><td class="tnum">6ms</td><td>纯规则，几乎不会超时</td></tr>
+            <tr><td>网络与序列化</td><td class="tnum">20ms</td><td class="tnum">25ms</td><td>含 TLS、首字节、30KB JSON</td></tr>
+            <tr><td><b>合计</b></td><td class="tnum"><b>100ms</b></td><td class="tnum">—</td><td>按最坏情况相加倒推</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>延迟预算怎么分：100ms 是设计出来的，不是测出来的</h3>
+      <p>总预算 P99 100ms，分配如下。注意两点：</p>
+      <p><b>1）每层超时要比预算再留 20% 余量。</b>比如精排预算 40ms，实际设 48ms 超时；因为一旦超时你要有几毫秒去做降级决策和组装，而不是卡在超时点上。</p>
+      <p><b>2）各阶段 P99 不能简单相加。</b>数学上独立随机变量的 P99 之和会大于整体的 P99；但线上各阶段共享 CPU、共享下游、共享 GC 停顿，尾部是相关的，实测往往接近相加。所以工程上按「最坏情况相加 = 100ms」倒推，是更安全的做法。</p>
+
+      <div class="formula">
+        超时(层) = 预算(层) × 1.2 &nbsp;&nbsp;|&nbsp;&nbsp; 剩余时间 = deadline − now
+        <span class="note">deadline 是"这次请求最晚必须在哪个时刻返回"的绝对时间，now 是当前时刻，两者相减就是还能花的时间。下游必须用「剩余时间」而不是自己的固定超时：网关传下来的 deadline 是绝对的，剩 18ms 时召回的 20ms 超时就该截断成 18ms。</span>
+      </div>
+
+      <pre><code># 请求上下文里携带绝对 deadline，逐层传递
+ctx = {
+  "trace_id": "r-8f3c...",
+  "deadline_ms": 100,        # 从网关收到请求开始计时
+  "uid": 10086,
+  "stage_budget": {"recall": 20, "prerank": 15, "rank": 40, "rerank": 5}
+}
+
+def call_stage(name, fn):
+    remain = ctx["deadline_ms"] - elapsed()
+    if remain &lt;= 0:
+        return fallback(name)              # 直接降级，不再发请求
+    timeout = min(ctx["stage_budget"][name], remain)   # 关键：取小值
+    try:
+        return fn(timeout_ms=timeout)
+    except Timeout:
+        metrics.inc(f"{name}_timeout")
+        return fallback(name)</code></pre>
+
+      <h3>超时与降级：每一层都要想好「算不出来怎么办」</h3>
+      <p>降级不是异常处理，是<b>产品设计</b>。你要提前决定：相关性掉多少是可以接受的？白屏是绝对不能接受的，所以任何一层挂掉都必须有兜底。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>故障场景</th><th>触发条件</th><th>降级动作</th><th>效果损失</th><th>用户感知</th></tr></thead>
+          <tbody>
+            <tr><td>某一路召回超时</td><td>该路 &gt; 20ms 未返回</td><td>丢弃该路，用剩下 2 路的结果（2000 → 约 1300）</td><td>召回率 -3~5 个点</td><td>基本无感</td></tr>
+            <tr><td>全部召回失败</td><td>3 路全超时 / 索引不可用</td><td>返回 Redis 里预排好的「热门 + 同城」列表</td><td>个性化消失，CTR 可能 -20%</td><td>内容仍可看</td></tr>
+            <tr><td>特征服务超时</td><td>&gt; 15ms 或错误率 &gt; 1%</td><td>用本地缓存的上一次特征；没有则填默认值并打 <code>missing=1</code></td><td>精排分数失真，AUC 掉 2~4 个点</td><td>无感</td></tr>
+            <tr><td>粗排超时</td><td>&gt; 15ms</td><td>跳过粗排，召回结果按路内分数截断到 200 直接进精排</td><td>精排候选质量下降</td><td>无感</td></tr>
+            <tr><td>精排超时</td><td>&gt; 40ms（GPU 排队）</td><td><b>退回粗排分数</b>排序取 top10</td><td>CTR -1~2%</td><td>无感</td></tr>
+            <tr><td>重排超时</td><td>&gt; 5ms</td><td>跳过打散，直接按精排分输出</td><td>多样性变差，短期 CTR 可能还升</td><td>无感</td></tr>
+            <tr><td>模型服务 5xx</td><td>连续 5 次失败</td><td>切备用版本（上一版常驻显存）；再失败则规则排序：<code>0.7×热度 + 0.3×先验CTR</code></td><td>个性化大幅下降</td><td>可能察觉「推得不准」</td></tr>
+            <tr><td>全链路超时</td><td>剩余 &lt; 10ms</td><td>返回该用户上一次的结果快照（缓存 5 分钟）</td><td>内容重复</td><td>刷新后内容不变</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout danger">
+        <p><b>新手最常犯的错：给每一层都设 100ms 超时。</b>结果是一次请求最坏要 400ms，网关早就断了，用户看到白屏。正确做法是<b>总 deadline 100ms，逐层扣减</b>；下游拿到的永远是「剩余时间」。</p>
+      </div>
+
+      <div class="callout case">
+        <p><b>真实取舍：</b>晚高峰 19:30，精排 GPU 队列积压，P99 从 45ms 涨到 180ms。止损动作是把精排候选从 150 砍到 80、batch 从 32 降到 16，同时把超时阈值卡在 40ms，超出直接退回粗排。结果是 CTR -1.2%，但接口成功率从 97.4% 回到 99.93%。</p>
+        <p><b>这个决策的对错标准不是「CTR 掉了」，而是「掉 1.2% CTR 换 2.5 个点成功率」值不值。</b>在信息流产品里通常值——白屏一次，用户当天可能就不来了。</p>
+      </div>
+      <h2 id="feature"><span class="kicker">FEATURE</span>特征服务：线上线下为什么总是不一致</h2>
+      <p class="lead">离线是一个可以看全量、可以回刷、可以重算的世界；在线是一条一条查、必须在 10ms 内返回、只能看「现在」的世界。这两个世界的缝隙，就是绝大多数线上事故的入口。</p>
+
+      <h3>离线特征 vs 在线特征：不是同一份东西</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>维度</th><th>离线（Hive / Spark）</th><th>在线（Redis / FeatureStore）</th><th>不一致会怎样</th></tr></thead>
+          <tbody>
+            <tr><td><b>存储形态</b></td><td>分区表，按天全量快照</td><td>KV，按 user_id / item_id 单点查</td><td>离线能 join 到的字段，线上根本没存</td></tr>
+            <tr><td><b>计算方式</b></td><td>全表 join、窗口函数、回刷历史</td><td>请求时拼装、批量 MGET、流式更新</td><td>同一个特征两份 SQL，逻辑悄悄分叉</td></tr>
+            <tr><td><b>时间语义</b></td><td>按 <code>dt</code> 分区，自然日</td><td>事件时间滑动窗口，秒级</td><td>差一天、差 8 小时（时区），分布直接偏</td></tr>
+            <tr><td><b>更新频率</b></td><td>T+1，跑批完才能用</td><td>分钟级 / 实时流</td><td>离线用昨天的，线上用刚才的，模型没见过</td></tr>
+            <tr><td><b>可回刷</b></td><td>能，改口径重跑历史</td><td>不能，历史只存在于日志里</td><td>线上口径改了，老样本无法对齐</td></tr>
+            <tr><td><b>失败代价</b></td><td>重跑一次</td><td>用户看到默认值 / 服务降级</td><td>缺失率 5%，AUC 掉 3 个点</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>保证一致的四个抓手</h3>
+      <div class="grid c2">
+        <div class="card accent">
+          <h4>1. 一份定义（Feature Registry）</h4>
+          <p>特征名、类型、默认值、时间窗口、数据源、负责人，全部写在一处。离线任务和在线服务<b>从同一个 registry 生成代码</b>，禁止两边各写一份 SQL。</p>
+        </div>
+        <div class="card teal">
+          <h4>2. 一份转换逻辑</h4>
+          <p>归一化、分桶、log 变换这些预处理，必须固化进模型（作为模型的一部分导出），或训练与服务共用同一份 Python 函数。最怕「训练时做了标准化，线上忘了」。</p>
+        </div>
+        <div class="card amber">
+          <h4>3. 日志即样本</h4>
+          <p>在线打分时把<b>实际用到的特征向量</b>写进曝光日志，训练直接用这份日志。这是最彻底的方案——天然一致，代价是存储翻几倍，且无法回刷历史。</p>
+        </div>
+        <div class="card">
+          <h4>4. 持续对账</h4>
+          <p>每天抽样 1 万个请求，把线上特征落盘，与离线重算结果逐字段比对：缺失率、均值差、KS、PSI。差异超阈值就报警，不等指标跌了才发现。</p>
+        </div>
+      </div>
+
+      <div class="callout tip">
+        <p><b>工程上的优先级：</b>日志即样本 &gt; 统一 registry &gt; 每日对账 &gt; 靠人 review。前两个能消灭 80% 的不一致，后两个只能让你早一点发现。如果团队只做一件事，做「把 serving 的特征落进日志」。</p>
+      </div>
+
+      <h3>特征穿越的三种典型形态</h3>
+      <p>特征穿越（feature leakage）的本质是：<b>训练时你知道了预测时刻不可能知道的信息</b>。它在离线表现为「AUC 高得离谱」，上线表现为「效果归零」。三种形态要能脱口而出：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>形态</th><th>典型特征</th><th>错在哪</th><th>识别信号</th></tr></thead>
+          <tbody>
+            <tr><td><b>① 用未来统计</b></td><td><code>item_ctr_7d</code>、<code>user_cnt_30d</code>、<code>item_gmv_1d</code></td><td>统计窗口覆盖了样本发生之后的时间，把未来的点击算进了过去的特征</td><td>单特征 AUC 高到 0.75+；按天切开后，越靠后的日期特征越强</td></tr>
+            <tr><td><b>② 用 label 派生</b></td><td><code>is_clicked_before</code>、<code>video_finish_rate</code>、<code>order_amount</code>、退款率</td><td>这些值只有「点击/下单之后」才产生，等于把答案喂给模型</td><td>某特征在正样本上 100% 有值、负样本全缺失</td></tr>
+            <tr><td><b>③ 时间口径不一致</b></td><td>所有带窗口的聚合</td><td>离线按自然日 <code>dt</code>、在线按滑动窗口；离线用 UTC、线上用本地时区；离线含当天、线上到昨天</td><td>离线分布与线上分布 PSI &gt; 0.25；误差集中在跨零点时段</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout danger">
+        <p><b>一个反直觉的判据：</b>如果某个特征的加入让 AUC 从 0.80 跳到 0.92，先别高兴，先查穿越。真实的业务信号很少能一次贡献 10 个点。经验上，<b>单特征 AUC 超过 0.7 就要逐条审计它的时间线</b>。</p>
+      </div>
+
+      <h3>具体例子：<code>item_ctr_7d</code> 到底该用哪段时间</h3>
+      <p>这个特征在几乎所有推荐系统里都存在，也是穿越率最高的一个。假设样本是 <b>6 月 3 日</b> 的一条曝光，用户在这个时刻看到了物品 A：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>写法</th><th>统计窗口</th><th>是否穿越</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>❌ 全量快照</td><td>整张表的 6/1–6/7</td><td><b>严重穿越</b></td><td>用到了 6/4–6/7 的点击，其中包含这条样本自己的结果</td></tr>
+            <tr><td>❌ 当天含当日</td><td>5/28–6/3 整天</td><td><b>穿越</b></td><td>6/3 的点击发生在曝光之后，样本时刻还看不到</td></tr>
+            <tr><td>⚠️ 差一天</td><td>5/27–6/2</td><td>勉强可用</td><td>保守但安全；牺牲了最新一天的信息</td></tr>
+            <tr><td>✅ 正确（离线）</td><td><code>[6/3 00:00 − 7d, 6/3 00:00)</code>，且只取 <code>event_time &lt; 样本 event_time</code></td><td>不穿越</td><td>as-of join，按样本自己的时间戳取窗口</td></tr>
+            <tr><td>✅ 正确（在线）</td><td>请求时刻 T 往前推 7 天，截止到 <b>T−1 天</b></td><td>不穿越</td><td>因为离线聚合有 1 天延迟，线上必须留同样的延迟才能对齐</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <pre><code>-- 正确做法：as-of join，按样本时间取「当时可得的」统计
+-- 关键点 1：窗口右端是样本时间，不是今天
+-- 关键点 2：再往前留 1 天，覆盖日志延迟
+WITH stat AS (
+  SELECT item_id, dt,
+         SUM(clicks)   AS clicks,
+         SUM(impressions) AS imps
+  FROM dwd_item_hourly          -- 每小时聚合，T+1 可用
+  WHERE dt BETWEEN date_sub('${sample_date}', 8)
+               AND date_sub('${sample_date}', 1)
+  GROUP BY item_id, dt
+)
+SELECT s.label,
+       COALESCE(SUM(st.clicks) / SUM(st.imps), 0.0) AS item_ctr_7d,
+       SUM(st.imps) AS item_imp_7d          -- 顺便带上置信度：曝光太少不可信
+FROM samples s
+LEFT JOIN stat st
+  ON st.item_id = s.item_id
+ AND st.dt &gt;= date_sub(s.dt, 7)
+ AND st.dt &lt;  s.dt                        -- 严格小于样本当天
+GROUP BY s.request_id, s.label</code></pre>
+
+      <div class="callout case">
+        <p><b>真实数字：</b>一个短视频项目里，<code>item_ctr_7d</code> 最初用全量快照，离线 AUC <b>0.856</b>；改成 as-of join 后掉到 <b>0.831</b>。掉的这 2.5 个点全是虚高——线上本来就不可能拿到未来数据。</p>
+        <p>更有意思的是：修正后线上 CTR 反而 <b>+1.8%</b>。因为旧特征在线上大面积缺失（新物品没有 7 天统计），模型学到的其实是「有没有统计值」这个代理信号，而不是真实点击率。带上 <code>item_imp_7d</code> 做置信度后，冷启动物品的排序明显改善。</p>
+      </div>
+
+      <h3>版本管理、回填与监控</h3>
+      <p>特征不是一个字段，是一个<b>有版本的资产</b>。改口径必须像改接口一样：新版本、双写、灰度、可回滚。</p>
+      <div class="pipeline">
+        <div class="step"><b>定义 v2</b><span>registry 里新增 <code>item_ctr_7d@v2</code>，不覆盖 v1</span></div>
+        <div class="step"><b>双写</b><span>离线与在线同时产 v1 / v2，跑 3~7 天</span></div>
+        <div class="step"><b>对账</b><span>抽样比对分布：均值、分位数、PSI、缺失率</span></div>
+        <div class="step"><b>回填</b><span>重跑历史，写新分区，不动老分区</span></div>
+        <div class="step"><b>切换</b><span>训练用 v2 → 灰度 5% → 全量，保留 v1 热备</span></div>
+      </div>
+
+      <p>回填（backfill）有三个坑：<b>耗时</b>（30 天历史 × 10 亿行，Spark 要跑几小时）、<b>口径漂移</b>（回填用的是今天的数据源，而历史时刻的数据源可能已经变了）、<b>覆盖写</b>（新分区写错路径，把线上正在读的分区覆盖了）。所以回填必须写独立路径，验证后再切。</p>
+
+      <p>监控只看四个指标就够：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th>定义</th><th>正常</th><th>告警阈值</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><b>缺失率</b></td><td>取不到值的请求 / 总请求</td><td>&lt; 0.3%</td><td>&gt; 0.5% 关注，&gt; 2% 告警</td><td>新物品、新用户天然缺失，要分群看</td></tr>
+            <tr><td><b>PSI</b></td><td>线上分布 vs 训练分布</td><td>&lt; 0.1</td><td>&gt; 0.25 显著漂移</td><td>分类型特征要先分桶再算</td></tr>
+            <tr><td><b>覆盖率</b></td><td>有非默认值的 item 占比</td><td>&gt; 95%</td><td>&lt; 90%</td><td>覆盖率和缺失率是一体两面</td></tr>
+            <tr><td><b>新鲜度</b></td><td>now − 特征事件时间</td><td>&lt; 5min</td><td>&gt; 30min</td><td>流任务挂了最先体现在这里</td></tr>
+            <tr><td><b>单特征 AUC</b></td><td>只用该特征算的 AUC</td><td>接近训练期</td><td>偏离 &gt; 0.03</td><td>最能提前发现穿越和口径变化</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <pre><code># feature_registry.yaml —— 一份定义，两端生成
+name: item_ctr_7d
+version: v2
+owner: rec-feature
+dtype: float32
+default: 0.0
+window: 7d
+lag: 1d                     # 离线聚合延迟，在线必须对齐
+source: dwd_item_hourly
+key: item_id
+caveat: 曝光数 &lt; 100 时不可信，需配合 item_imp_7d 使用
+online:
+  store: redis
+  ttl: 10m
+  fallback: [item_ctr_1d, global_ctr]
+monitor:
+  missing_rate_max: 0.005
+  psi_max: 0.25</code></pre>
+      <h2 id="deploy"><span class="kicker">DEPLOY</span>模型上线：从 checkpoint 到线上 5% 流量</h2>
+      <p class="lead">训练出 AUC 0.858 只是拿到了一张门票。真正的卡点是：导出后的模型，能不能在线上用<b>同样的特征、同样的预处理</b>，打出<b>同样的分数</b>。</p>
+
+      <div class="pipeline">
+        <div class="step"><b>① 训练</b><span>固定数据快照、随机种子、特征版本</span></div>
+        <div class="step"><b>② 导出</b><span>图 + 权重 + 预处理，一起打包</span></div>
+        <div class="step"><b>③ 一致性校验</b><span>同批请求，双端打分，误差 &lt; 1e-4</span></div>
+        <div class="step"><b>④ 注册</b><span>不可变 model_id，写元数据</span></div>
+        <div class="step"><b>⑤ 灰度</b><span>影子 → 5% → 20% → 50% → 100%</span></div>
+        <div class="step"><b>⑥ 观测 / 回滚</b><span>指标 + 延迟 + 错误率，30s 可回</span></div>
+      </div>
+
+      <h3>导出：最容易丢东西的一步</h3>
+      <p>导出不是 <code>torch.save(model)</code> 就完事。一个能上线的模型包必须包含四样东西：<b>计算图</b>（结构）、<b>权重</b>、<b>预处理</b>（归一化参数、词表、分桶边界）、<b>输入输出契约</b>（字段名、类型、shape、默认值）。少任何一样，线上就会用错。</p>
+
+      <div class="callout warn">
+        <p><b>不要导出整个 Python 对象（pickle）。</b>它依赖训练时的类定义和库版本，线上环境稍有不同就加载失败，而且有反序列化安全风险。用 SavedModel / ONNX / TorchScript 这类<b>与代码解耦</b>的格式。</p>
+      </div>
+
+      <pre><code># 训练 → 导出 → 一致性校验 → 注册（伪代码）
+def train_and_deploy(cfg):
+    ds = load_snapshot(cfg.data_version)          # 数据快照必须固定，能复现
+    model = build_model(cfg)
+    model.fit(ds.train, ds.valid)
+
+    # 1) 导出：图 + 权重 + 预处理参数
+    export_dir = f"dist/{cfg.model_name}/{cfg.model_id}"
+    export_saved_model(
+        model,
+        export_dir,
+        preprocess=ds.transform.params,           # 标准化均值/方差、词表、分桶
+        signature={"uid": "int64", "item_ids": "int64[200]", "features": "float32[200,64]"}
+    )
+
+    # 2) 一致性校验：拿 1000 条线上真实请求，双端打分
+    batch = sample_online_requests(n=1000, date="yesterday")
+    y_train_side = model.predict(batch)            # 训练框架
+    y_serve_side = client.predict(export_dir, batch)  # 线上 serving
+    diff = abs(y_train_side - y_serve_side).max()
+    assert diff &lt; 1e-4, f"serving skew: {diff}"    # 超了就别发布
+    assert abs(auc(y_serve_side, batch.y) - auc(y_train_side, batch.y)) &lt; 0.002
+
+    # 3) 注册：model_id 不可变，写清血缘
+    registry.register(
+        model_id=cfg.model_id,                     # 例：20240603-1430-a3f2
+        path=export_dir,
+        data_version=cfg.data_version,
+        feature_version=cfg.feature_version,
+        metrics={"auc": 0.858, "logloss": 0.412},
+        owner="rec-rank"
+    )</code></pre>
+
+      <h3>推理服务怎么选：TF Serving / Triton / 自研</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方案</th><th>擅长</th><th>动态 batch</th><th>多框架</th><th>运维成本</th><th>适合谁</th></tr></thead>
+          <tbody>
+            <tr><td><b>TF Serving</b></td><td>TensorFlow SavedModel，成熟稳定，版本管理内建</td><td>✅</td><td>❌ 主要 TF</td><td>低</td><td>模型全是 TF，团队没有专职推理工程</td></tr>
+            <tr><td><b>Triton</b></td><td>TF / PyTorch / ONNX / TensorRT 混部，支持 ensemble 与并发模型</td><td>✅ 配置化</td><td>✅</td><td>中（要维护 model repository）</td><td>多框架共存、GPU 要榨干、需要模型集成</td></tr>
+            <tr><td><b>TorchServe</b></td><td>PyTorch 生态，自定义 handler 灵活</td><td>✅</td><td>❌ 主要 PyTorch</td><td>中</td><td>纯 PyTorch 团队，模型有自定义前后处理</td></tr>
+            <tr><td><b>自研</b>（C++/Go + ONNX Runtime / libtorch）</td><td>与业务服务同进程，省 RPC，延迟最低；可深度定制特征拼装</td><td>自己写</td><td>✅</td><td>高（要人长期维护）</td><td>QPS 很高、延迟卡得死、有推理平台团队</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>取舍的实操建议：<b>QPS &lt; 2000、模型不超过 5 个 → 直接用 Triton</b>，别自研。自研的真正收益不是「快 3ms」，而是<b>能把特征拼装、模型推理、业务规则放进同一个进程，省掉两次 RPC 和序列化</b>；如果你的瓶颈不在这，自研就是纯粹的负债。</p>
+
+      <h3>版本、灰度、回滚</h3>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>版本不可变</h4>
+          <p><code>model_id</code> 一旦发布就不能改内容，例如 <code>20240603-1430-a3f2</code>。永远不要用 <code>latest</code> 这种会漂移的标签指向线上——三个月后没人知道线上跑的是哪个模型。</p>
+        </div>
+        <div class="card teal">
+          <h4>影子流量先行</h4>
+          <p>新模型接 100% 线上请求但<b>不影响结果</b>，只记录分数。对比新旧分数的均值、分位数、排序一致性（Top10 重合率）。差异大就说明有 skew，别放量。</p>
+        </div>
+        <div class="card amber">
+          <h4>双版本常驻</h4>
+          <p>新旧模型同时加载在显存里，切换只是改路由权重。这样回滚是<b>秒级</b>；如果需要重新下载 2GB 模型，回滚要 5 分钟，指标早跌穿了。</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>阶段</th><th>流量</th><th>观察时长</th><th>放量门槛</th><th>失败动作</th></tr></thead>
+          <tbody>
+            <tr><td>影子</td><td>0%（只打日志）</td><td>2h</td><td>分数分布 KS &lt; 0.05，Top10 重合率 &gt; 80%</td><td>不发</td></tr>
+            <tr><td>灰度 1</td><td>5%</td><td>2h</td><td>CTR / 时长不低于对照 &gt; 1 个标准差；P99 涨幅 &lt; 10%</td><td>立刻回滚</td></tr>
+            <tr><td>灰度 2</td><td>20%</td><td>半天</td><td>同上，且错误率 &lt; 0.1%</td><td>回滚到 0</td></tr>
+            <tr><td>扩量</td><td>50% → 100%</td><td>各 1 天</td><td>核心指标稳定，无长尾异常</td><td>回滚到上一档</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <pre><code># 加载与热更新（服务端视角，伪代码）
+load(model_id="20240520-0912-b7c1", device="cuda:0", warmup=100)  # 旧版，已在跑
+load(model_id="20240603-1430-a3f2", device="cuda:0", warmup=100)  # 新版，预热后再接流量
+
+# warmup 很关键：第一次前向要编译 kernel、分配显存，不预热会抖出 200ms 的毛刺
+
+# 热更新 = 只改路由权重，不重启进程
+router.set_weights({"20240520-0912-b7c1": 0.95,
+                    "20240603-1430-a3f2": 0.05})
+
+# 回滚同样只是改权重，30 秒内生效
+router.set_weights({"20240520-0912-b7c1": 1.0,
+                    "20240603-1430-a3f2": 0.0})</code></pre>
+
+      <p><b>自动回滚的触发器要提前写死</b>，不要等值班的人发现：CTR 相对下跌 &gt; 2% 持续 30 分钟、P99 上涨 &gt; 30%、5xx &gt; 1%、特征缺失率 &gt; 2%。任一命中就自动切回上一版并告警。这条规则救过的线上事故，比任何一次模型优化都多。</p>
+
+      <h3>推理性能优化：六个能立刻用上的手段</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>手段</th><th>典型收益</th><th>代价</th><th>什么时候用</th></tr></thead>
+          <tbody>
+            <tr><td><b>动态 batch</b></td><td>吞吐 3~5×</td><td>P99 +5~15ms（等 batch 攒满）</td><td>GPU 利用率低、QPS 高；用「最大 batch + 最大等待 5ms」双阈值</td></tr>
+            <tr><td><b>FP16</b></td><td>1.5~2×，显存减半</td><td>AUC 通常掉 &lt; 0.1%，需验证</td><td>GPU 推理默认开，成本最低</td></tr>
+            <tr><td><b>INT8 量化</b></td><td>2~4×</td><td>AUC 掉 0.3~1%，要校准集</td><td>延迟卡死、GPU 不够，且能接受小幅掉点</td></tr>
+            <tr><td><b>算子融合 / 图优化</b></td><td>10~30%</td><td>需要 TensorRT / ONNX Runtime 支持</td><td>模型结构稳定后做，别在迭代期做</td></tr>
+            <tr><td><b>候选截断</b></td><td>线性收益（150→80 约省 45%）</td><td>效果损失，可能漏掉长尾好内容</td><td>高峰期临时降级，或粗排足够强时常态化</td></tr>
+            <tr><td><b>请求缓存</b></td><td>命中率 5~15% 时直接省算力</td><td>一致性风险，实验可能被污染</td><td>同一用户 5s 内重复刷新（手滑、网络重试）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout danger">
+        <p><b>batch 是延迟的隐形杀手。</b>为了凑 batch 32 多等 10ms，看着不多，但它会出现在<b>每一个</b>请求的尾部，直接把 P99 从 45ms 推到 60ms。正确配置是：<code>max_batch_size=32</code>，<code>batch_timeout=5ms</code>——宁可 batch 小一点，也不要让请求空等。</p>
+      </div>
+
+      <div class="callout case">
+        <p><b>缓存要小心实验污染。</b>某团队给推荐结果加了 5 秒缓存，命中率 9%，GPU 省了 8%，很香。但缓存 key 只用了 <code>user_id</code>，没带实验组和模型版本，导致新模型上线后，命中缓存的用户仍然看到旧结果——A/B 实验的对照直接被稀释，结论变成「新模型没效果」。</p>
+        <p>正确 key：<code>hash(uid + scene + experiment_bucket + model_version + feature_version)</code>。缓存时间也要短，5 秒是上限，信息流场景建议 1~3 秒。</p>
+      </div>
+      <h2 id="ab"><span class="kicker">EXPERIMENT</span>实验平台：让「涨了 1%」这句话可信</h2>
+      <p class="lead">实验平台的价值不是开开关，而是让结论<b>可归因、可复现、经得住追问</b>。一次分流写错，后面所有分析都是白算。</p>
+
+      <h3>分流：用户级 hash 是底线</h3>
+      <div class="formula">
+        bucket = murmur3(uid + "_" + salt) % 10000
+        <span class="note">同一用户在实验期内永远落在同一个桶；salt 决定「这次实验怎么切」，换 salt 就是换一组人。</span>
+      </div>
+      <p>三个必须遵守的规则：</p>
+      <p><b>1）按用户分，不按请求分。</b>如果每次请求随机，用户会一会儿看到新模型一会儿看到旧模型，体验抖动，而且点击行为被两种策略混合污染，谁也说不清效果来自哪个。</p>
+      <p><b>2）不要用设备号、手机号尾号、注册时间取模。</b>这些字段本身与人群相关：手机尾号 0–4 和 5–9 的用户，在新老程度上可能有系统性差异，一上来就分流不均。</p>
+      <p><b>3）分层（layer）+ 互斥（mutex）。</b>不同模块用不同 salt 分层，层与层之间正交，所以召回实验和 UI 实验可以同时跑；同一层内的多个实验必须互斥，否则一个用户同时进两个实验，效果无法拆开。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>概念</th><th>怎么做</th><th>解决什么问题</th><th>踩坑点</th></tr></thead>
+          <tbody>
+            <tr><td><b>用户级 hash</b></td><td><code>murmur3(uid + salt) % 10000</code></td><td>同一用户策略稳定，指标可比</td><td>hash 函数要固定，不能中途换实现</td></tr>
+            <tr><td><b>分层实验</b></td><td>UI 层 / 召回层 / 排序层 / 广告层各用独立 salt</td><td>多实验并行，互不干扰</td><td>层之间如果共享资源（同一 GPU），仍会互相影响延迟</td></tr>
+            <tr><td><b>互斥实验</b></td><td>同层内实验组桶位不重叠，或加互斥组 ID</td><td>避免同层两个策略叠加</td><td>互斥组会把流量切碎，样本量要重新算</td></tr>
+            <tr><td><b>流量比例</b></td><td>1 万桶，实验 500 桶 = 5%</td><td>小流量试错</td><td>5% 流量下，检测 1% 提升要跑很久</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <pre><code>import mmh3
+
+def bucket(uid: int, salt: str, total: int = 10000) -> int:
+    # 用无符号 32 位，避免负数取模在不同语言里不一致
+    return mmh3.hash(f"{uid}_{salt}", signed=False) % total
+
+# 实验配置：一个实验 = 一层 + 一组互斥桶位
+exp = {
+    "name": "rank_din_v3",
+    "layer": "ranking",            # 与 recall / ui 层正交
+    "salt": "ranking_2024q2",      # 换实验换 salt
+    "buckets": {"control": [0, 499], "treatment": [500, 999]},  # 各 5%
+    "unit": "uid",
+    "primary_metric": "ctr",
+    "guardrail": ["p99_latency", "unfollow_rate"]
+}
+
+def assign(uid: int) -> str:
+    b = bucket(uid, exp["salt"])
+    for group, (lo, hi) in exp["buckets"].items():
+        if lo &lt;= b &lt;= hi:
+            return group
+    return "outside"               # 90% 流量不参与，保持线上原策略</code></pre>
+
+      <h3>A/B 的样本量直觉：1% 的提升很贵</h3>
+      <p>两个比例的显著性检验，样本量近似公式（α=0.05，power=0.8）：</p>
+      <div class="formula">
+        n ≈ 16 × p(1−p) / δ² &nbsp;&nbsp;（每组样本量，p 为基准值，δ 为绝对提升）
+        <span class="note">16 是 α=0.05、power=0.8 对应的常数，够用了；严格的实验平台会用 15.7 或精确公式，差别不大。</span>
+      </div>
+      <p>基准 CTR 5% 时，不同提升幅度需要的样本量：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>相对提升</th><th>CTR 变化</th><th>δ（绝对值）</th><th>每组所需曝光</th><th>2000 万/天、50/50 下的理论时长</th></tr></thead>
+          <tbody>
+            <tr><td>+0.5%</td><td>5.00% → 5.025%</td><td class="tnum">0.00025</td><td class="tnum">≈ 1216 万</td><td>约 1.2 天</td></tr>
+            <tr><td><b>+1%</b></td><td>5.00% → 5.05%</td><td class="tnum">0.0005</td><td class="tnum">≈ 304 万</td><td>约 7~8 小时</td></tr>
+            <tr><td>+2%</td><td>5.00% → 5.10%</td><td class="tnum">0.001</td><td class="tnum">≈ 76 万</td><td>约 2 小时</td></tr>
+            <tr><td>+5%</td><td>5.00% → 5.25%</td><td class="tnum">0.0025</td><td class="tnum">≈ 12.2 万</td><td>约 20 分钟</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>理论时长 ≠ 实验时长。</b>上表只回答「统计上够不够」，不回答「结论对不对」。你还需要覆盖<b>完整的一周</b>（工作日 vs 周末行为差异）、跨过 <b>novelty effect</b>（新模型前几天的虚高）、避开大促和节假日。所以一次正经的排序实验，至少跑 <b>7 天</b>，重要决策跑 14 天。</p>
+      </div>
+
+      <p>关于「显著」的三个常见误解：</p>
+      <p><b>① p &lt; 0.05 不代表「A 有 95% 概率更好」。</b>它的意思是：如果 A、B 真的没差别，出现这么极端结果的概率小于 5%。你应该看的是<b>置信区间</b>——「CTR +1.8%，95% CI [+0.4%, +3.2%]」比「p=0.03」有用得多。</p>
+      <p><b>② 同时看 10 个指标，至少一个「显著」的概率约 40%。</b>所以实验前必须指定<b>一个主指标</b>，其他作为护栏指标（不能变差），不要在结果出来之后挑一个涨得最好看的讲。</p>
+      <p><b>③ AA 测试的假阳性率就是 5%。</b>跑 20 次 AA，平均有 1 次会「显著」。这不是平台坏了，是统计规律。上线前跑 AA 的目的是验证分流和指标计算正确，不是保证永远不显著。</p>
+
+      <h3>离线指标与线上指标：AUC 到 CTR 不是线性</h3>
+      <p>AUC 衡量的是<b>全局排序能力</b>；线上只消费排序结果的<b>前 10 个位置</b>。这意味着：模型在长尾物品上排得更准，AUC 会涨，但用户根本看不到那些物品，CTR 可能一动不动。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>离线指标</th><th>线上指标</th><th>正常情况下</th><th>什么时候会背离</th></tr></thead>
+          <tbody>
+            <tr><td>AUC / LogLoss</td><td>CTR</td><td>同向，但幅度不成比例</td><td>AUC 提升集中在中后段；或分数校准变差</td></tr>
+            <tr><td>Recall@100</td><td>人均时长</td><td>召回率涨 → 候选池更全</td><td>召回进来的都是「相关但不好看」的内容</td></tr>
+            <tr><td>NDCG</td><td>点击深度</td><td>同向</td><td>位置偏差让离线 NDCG 虚高</td></tr>
+            <tr><td>校准误差 ECE</td><td>广告收入 / eCPM</td><td>校准好 → 出价合理</td><td>校准差时 CTR 可能没变，但收入跌</td></tr>
+            <tr><td>多样性指标</td><td>次日留存</td><td>多样性高 → 长期留存好</td><td>短期 CTR 反而下降（用户点得少但看得久）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout case">
+        <p><b>两个真实方向相反的例子：</b></p>
+        <p>① DIN 相比 DeepFM，离线 AUC <b>+1.1pt</b>（0.847 → 0.858），线上 CTR <b>+1.8%</b>。方向一致，因为收益集中在头部候选的排序精度上。</p>
+        <p>② 某次加了一个强序列特征，离线 AUC <b>+0.8pt</b>，线上 CTR <b>−0.5%</b>。查下来是分数分布变得更极端：模型把「用户刚看过同类」的内容推到极致，导致首屏同质化，用户刷两次就走了。<b>AUC 涨的是「猜得准」，跌的是「看得爽」。</b></p>
+      </div>
+
+      <h3>一个「实验结论不可信」的案例</h3>
+      <p>某次排序模型实验，跑了 3 天，实验组 CTR <b>−4.2%</b>，看起来是模型变差了，团队准备放弃。复盘时发现三个问题叠加：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>问题</th><th>具体表现</th><th>怎么发现</th><th>正确做法</th></tr></thead>
+          <tbody>
+            <tr><td><b>分流不均</b></td><td>用「手机号尾号 % 100」分桶，实验组新用户占比 32%，对照组 21%。新用户 CTR 天然低，整体被拉低</td><td>做 SRM 检验（分流比例卡方），并检查实验组/对照组的人群结构</td><td>改用 <code>murmur3(uid + salt)</code>，分桶后立即做 AA</td></tr>
+            <tr><td><b>指标被污染</b></td><td>同期另一个团队改了曝光埋点，实验组先上线，日志多了 7% 的重复曝光，分母虚高</td><td>对数仓日志量与客户端上报量，发现比值异常</td><td>实验期冻结埋点变更；主指标用「去重后的曝光」</td></tr>
+            <tr><td><b>实验期太短</b></td><td>周五上线，只跑了 2 天，正好覆盖周末（时长天然高），周一回落后看起来暴跌</td><td>按天画指标曲线，看到明显的周期性</td><td>至少跑满 7 天，且以「周同比」而不是「实验期均值」判断</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>修正分流、重跑 7 天后，结论反转：CTR <b>+1.3%</b>。如果当时直接下结论「模型不行」，就白白丢了一个正收益的版本。<b>实验的第一原则：先证明实验本身是干净的，再谈效果。</b></p>
+
+      <div class="callout danger">
+        <p><b>SRM（Sample Ratio Mismatch）是实验的第一道体检。</b>设计 50/50，实际 50.4/49.6 可以接受；如果卡方检验 p &lt; 0.001，说明分流、埋点或数据链路有 bug，<b>此时所有指标结论直接作废</b>，不要解释、不要调参，先修分流。</p>
+      </div>
+      <h2 id="troubleshoot"><span class="kicker">PLAYBOOK</span>常见问题排查手册：13 条</h2>
+      <p class="lead">下面这张表建议直接收藏。真实排查时不需要背，但要知道「先看什么、再看什么」，避免一上来就怀疑模型。</p>
+      <p>用法：先按<b>现象</b>定位到条目，再按<b>排查步骤</b>从便宜到贵做验证（看日志 → 看分群 → 看单特征 → 做实验），最后用<b>验证</b>列确认真的修好了，而不是指标自己波动回去了。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>问题</th><th>现象</th><th>可能原因</th><th>排查步骤</th><th>解决方案</th><th>怎么验证</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="tnum">1</td><td><b>新用户冷启动</b></td>
+              <td>新用户首刷 CTR 只有老用户的 1/3，首刷跳出率高</td>
+              <td>无行为序列、画像为空、召回只能走热门、user 侧特征整片缺失</td>
+              <td>① 按 <code>is_new</code> 分群看 CTR / 曝光量 / 点击深度<br>② 看新用户各特征缺失率<br>③ 看新用户召回来源占比（热门 vs 个性化）</td>
+              <td>热门 + 地域 + 设备 + 时段多路兜底；兴趣选择页（3 个类目即可）；bandit 快速试探；模型给缺失值单独 embedding</td>
+              <td>首刷 CTR、前 3 次曝光点击率、次日 / 7 日留存</td>
+            </tr>
+            <tr>
+              <td class="tnum">2</td><td><b>新物品冷启动</b></td>
+              <td>新物品 7 天曝光接近 0，或只推给极少数用户</td>
+              <td>无协同信号，item 向量接近随机；训练样本里没有它的正样本；召回索引没更新</td>
+              <td>① 统计新物品曝光分布与 Gini<br>② 算新物品进入召回池的比例<br>③ 检查内容特征是否完整、索引是否同步</td>
+              <td>内容 / 语义向量召回兜底；每天保量曝光（如 500 次）；探索位；新物品加权</td>
+              <td>新物品 7 日曝光覆盖率、新物品 CTR、30 日存活率</td>
+            </tr>
+            <tr>
+              <td class="tnum">3</td><td><b>信息茧房 / 多样性下降</b></td>
+              <td>人均时长在涨，但 7 日留存跌、退订率涨、首页类目越来越单一</td>
+              <td>单目标优化 + 反馈闭环 + 重排只按分数排；缺少探索</td>
+              <td>① 算 Top10 的类目熵 / 作者数<br>② 看重复曝光率<br>③ 分新老用户看长期留存</td>
+              <td>MMR / DPP 打散；多目标（时长 + 留存 + 负反馈）；保留 5~10% 探索流量；新作者保量</td>
+              <td>类目熵、作者覆盖数、7 / 30 日留存、退订率</td>
+            </tr>
+            <tr>
+              <td class="tnum">4</td><td><b>位置偏差导致离线虚高</b></td>
+              <td>离线 AUC 很高，线上首屏反而不如基线；位置 1 的 CTR 是位置 10 的 5~10 倍</td>
+              <td>训练样本带位置特征，模型学到「位置 → 点击」而不是「相关性 → 点击」</td>
+              <td>① 消融位置特征，看 AUC 掉多少<br>② 做小流量位置随机化实验<br>③ 看预测分与位置的相关系数</td>
+              <td>位置作为 bias 特征、推理时置 0（PAL）；或独立 bias tower；训练用 IPS 加权</td>
+              <td>去位置后的离线 AUC（会降是正常的）、线上 CTR、各位置 CTR 差距是否收窄</td>
+            </tr>
+            <tr>
+              <td class="tnum">5</td><td><b>特征穿越</b></td>
+              <td>离线 AUC 高得反常（0.90+），上线跌 5 个点以上</td>
+              <td>用了未来统计、label 派生特征、训练/服务时间口径不一致</td>
+              <td>① 逐特征算单特征 AUC<br>② 审计可疑特征的时间线（窗口右端是哪个时刻）<br>③ 按天分组看重训稳定性</td>
+              <td>as-of join；严格按样本时间切窗口；离线与在线保留同样的 lag；日志即样本</td>
+              <td>离线 AUC 回到合理区间；shadow 打分与线上一致；修复前后线上 A/B</td>
+            </tr>
+            <tr>
+              <td class="tnum">6</td><td><b>线上线下特征不一致</b></td>
+              <td>同一请求，离线重算分与线上打分差异大，KS &gt; 0.1</td>
+              <td>特征版本不同、预处理没同步、默认值不同、时区 / 单位不一致</td>
+              <td>① 抓 1000 条真实请求，双端打分<br>② 逐特征比对均值 / 缺失率<br>③ 检查导出包里的 transform 参数</td>
+              <td>统一 registry；预处理固化进模型；默认值一处定义；每日对账</td>
+              <td>双端分数 max diff &lt; 1e-4；特征 KS &lt; 0.02；缺失率回到基线</td>
+            </tr>
+            <tr>
+              <td class="tnum">7</td><td><b>数据倾斜 / 长尾</b></td>
+              <td>头部 1% 物品占 60% 曝光；长尾 CTR 极低或方差极大</td>
+              <td>马太效应；训练样本被头部主导；长尾统计量噪声大</td>
+              <td>① 算曝光 Gini 与头部占比<br>② 按曝光量分桶看 AUC / CTR<br>③ 看长尾特征覆盖率</td>
+              <td>样本加权 / 重采样；长尾专用召回；保量曝光；CTR 做贝叶斯平滑</td>
+              <td>覆盖率、长尾 CTR、Gini 下降，同时整体 CTR 不跌</td>
+            </tr>
+            <tr>
+              <td class="tnum">8</td><td><b>反馈闭环 / 正反馈放大</b></td>
+              <td>推过的内容越推越多，新内容永远拿不到曝光；模型逐渐「自我实现」</td>
+              <td>训练数据由当前策略产生，只有被曝光的物品才有 label，形成闭环</td>
+              <td>① 看曝光分布随时间的集中度<br>② 新内容进入训练样本的比例<br>③ 用历史随机流量日志做无偏评估</td>
+              <td>保留 1~5% 随机探索流量；IPS / DR 做反事实评估；定期用随机日志重训</td>
+              <td>探索流量上的无偏指标、新内容 CTR、曝光分布熵</td>
+            </tr>
+            <tr>
+              <td class="tnum">9</td><td><b>样本偏差（只看曝光样本）</b></td>
+              <td>离线评估很好，全库上线后「该出的出不来」，召回侧效果差</td>
+              <td>只在曝光样本上训练与评估，未曝光物品没有 label；评估空间 ≠ 服务空间</td>
+              <td>① 对比样本空间与召回空间<br>② 检查负采样方式（是否只采曝光未点击）<br>③ 看离线评估是否包含召回阶段</td>
+              <td>全库负采样；曝光纠偏（IPS 权重）；端到端评估（召回 + 排序一起看）</td>
+              <td>端到端离线指标；线上 A/B；召回率与覆盖率的联合变化</td>
+            </tr>
+            <tr>
+              <td class="tnum">10</td><td><b>延迟抖动 / P99 超标</b></td>
+              <td>P99 从 90ms 涨到 300ms，超时率从 0.1% 涨到 3%</td>
+              <td>慢查询、大 key、GC 停顿、下游抖动、热点用户、batch 堆积</td>
+              <td>① trace 分层看哪一段涨<br>② 看是全局还是单实例<br>③ 看 CPU / GC / 连接池<br>④ 对照流量曲线（是否大促）</td>
+              <td>热点缓存；超时 + 降级；限流；异步化；batch 改小；慢查询加索引</td>
+              <td>P99 分位曲线回落、超时率 &lt; 0.5%、降级触发次数归零</td>
+            </tr>
+            <tr>
+              <td class="tnum">11</td><td><b>模型更新后指标下跌</b></td>
+              <td>发布 30 分钟后 CTR −3%，错误率正常，没有报错</td>
+              <td>特征版本不匹配、导出漏了预处理、训练/服务 skew、实验被污染、新版过拟合近期</td>
+              <td>① <b>先回滚</b>，止损优先<br>② 同一批请求双版本打分对比<br>③ 核对特征版本与 transform<br>④ 看分数分布是否整体偏移</td>
+              <td>双版本并载；影子流量；灰度 5%；自动回滚触发器</td>
+              <td>灰度组 vs 对照组；分数 KS &lt; 0.05；离线一致性校验通过</td>
+            </tr>
+            <tr>
+              <td class="tnum">12</td><td><b>广告：计费 / 出价 / 预算 / 作弊</b></td>
+              <td>收入跌、预算超投或早间烧完、某类流量 CTR 异常高</td>
+              <td>计费口径不一致、pacing 失效、刷量作弊、频控漏洞</td>
+              <td>① 三方对账（曝光 / 点击 / 扣费）<br>② 分时段看消耗曲线<br>③ 按 IP / 设备聚集度查异常<br>④ 算 IVT 比例</td>
+              <td>预算平滑（pacing）；反作弊与点击校验；频控；异常流量退量</td>
+              <td>消耗曲线贴合目标、eCPM 稳定、退款率与 IVT 率下降</td>
+            </tr>
+            <tr>
+              <td class="tnum">13</td><td><b>政务：合规 / 可解释 / 公平</b></td>
+              <td>说不清为什么推给这家企业；某类企业曝光显著偏低</td>
+              <td>硬规则被模型覆盖、用了敏感特征、样本本身有偏</td>
+              <td>① 查规则命中日志<br>② 过一遍敏感特征清单<br>③ 分群体看曝光率与通过率</td>
+              <td>规则优先 + 模型兜底；输出可解释理由；公平性评估；全链路审计日志</td>
+              <td>审计抽样可复现、各群体覆盖率差距 &lt; 5pt、申诉率下降</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>四个高频问题的具体打法</h3>
+
+      <h4>① 冷启动：按行为量分三段，别用一套策略</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>阶段</th><th>行为量</th><th>主要信号</th><th>策略</th><th>目标</th></tr></thead>
+          <tbody>
+            <tr><td><b>完全冷启动</b></td><td>0 次点击</td><td>地域、设备、时段、注册来源、IP</td><td>热门 + 地域 + 设备分群；兴趣选择页；多样性优先</td><td>前 3 次曝光至少 1 次点击</td></tr>
+            <tr><td><b>弱画像</b></td><td>1~10 次</td><td>几次点击的类目、作者</td><td>类目扩展召回；bandit 在 3~5 个类目里试探</td><td>7 日内把兴趣收敛到 2~3 个类目</td></tr>
+            <tr><td><b>可用画像</b></td><td>&gt; 10 次</td><td>序列、长期兴趣、负反馈</td><td>正常个性化，保留 5% 探索</td><td>留存与时长</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">新物品同理，但方向相反：新用户缺的是「用户信号」，新物品缺的是「物品信号」。所以一个靠人群先验，一个靠内容理解（标题 / 封面 / 类目向量）。</p>
+
+      <h4>② 位置偏差：训练时用位置，推理时把位置抹掉</h4>
+      <div class="formula">
+        P(click | user, item, pos) ≈ σ( f(user, item) + b(pos) )
+        <span class="note">把「相关性」和「位置」拆成两项：f 学用户物品匹配，b 学位置带来的额外点击。推理时只保留 f，等价于把 pos 置 0（PAL，Position-Aware Learning）。</span>
+      </div>
+      <p>实现上有两种做法：<b>（a）训练时把位置当特征，推理时统一填 0</b>，简单但要保证位置特征没有和 item 特征交叉；<b>（b）单独一个 bias tower 只吃位置</b>，主塔完全不看位置，更干净，工程上多一个输出头。无论哪种，都要用<b>位置随机化</b>的小流量实验来验证去偏是否真的有效。</p>
+
+      <h4>③ 反馈闭环：用 IPS 给「没被推过的」内容一个公平的评估</h4>
+      <div class="formula">
+        IPS(π_new) = (1/n) Σ [ π_new(aᵢ | xᵢ) / π_old(aᵢ | xᵢ) ] · rᵢ
+        <span class="note">π_old 是产生日志的旧策略，π_new 是待评估的新策略。只有旧策略以非零概率选过的动作才能被估计——所以必须保留随机探索流量，否则分母为 0。</span>
+      </div>
+      <p>直觉：旧策略很少推的内容，一旦被推了，它的反馈要<b>放大</b>（因为样本稀有）；旧策略天天推的内容，权重要<b>压低</b>。这样评估出来的新策略效果，才不会被旧策略的偏好带偏。方差很大，实践中用 clipping（把权重截到 10 以内）或 DR（doubly robust）降方差。</p>
+
+      <h4>④ 延迟抖动：先分层看 trace，再怀疑模型</h4>
+      <ul class="checklist">
+        <li>看是<b>全局</b>还是<b>单实例</b>：单实例 → 机器 / 热点；全局 → 下游或流量</li>
+        <li>看 trace 里哪一段涨：召回 / 特征 / 模型 / 组装，各段分别看 P99</li>
+        <li>看依赖：Redis 大 key、MySQL 慢查询、下游超时重试放大</li>
+        <li>看运行时：CPU 打满、GC 停顿、连接池耗尽、线程数打满</li>
+        <li>看流量结构：是否有大促、爬虫、热点事件导致某类请求暴增</li>
+        <li>最后才看模型：batch 是否堆积、是否有超大 item 列表请求</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>排查的通用原则：从外到内，从便宜到贵。</b>先确认「数据对不对」，再确认「特征对不对」，再确认「模型对不对」，最后才怀疑「策略设计」。顺序反了，你会花两天调模型，最后发现是埋点重复上报。</p>
+      </div>
+
+      <h2 id="ads"><span class="kicker">ADS &amp; GOV</span>广告专题与行业场景</h2>
+      <p class="lead">广告是推荐系统里唯一「每一次曝光都直接对应钱」的场景，所以它的工程约束比内容推荐更硬：算错一次出价，就是真金白银。</p>
+
+      <h3>计费与出价：eCPM 是排序的唯一货币</h3>
+      <div class="formula">
+        eCPM = pCTR × bid × 1000 &nbsp;&nbsp;|&nbsp;&nbsp; OCPC 下：bid = target_CPA × pCVR
+        <span class="note">不同计费方式（CPC / CPM / oCPC）必须统一折算成 eCPM 才能混排，否则平台会系统性地偏向某一种广告。</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>环节</th><th>要解决的问题</th><th>工程做法</th><th>出错的表现</th></tr></thead>
+          <tbody>
+            <tr><td><b>计费</b></td><td>曝光 / 点击 / 扣费三方一致</td><td>计费日志独立落库，T+1 对账；点击去重（同一用户 30 分钟内同一广告只计一次）</td><td>广告主后台与平台账单差 3%，投诉</td></tr>
+            <tr><td><b>出价</b></td><td>pCTR / pCVR 校准不准导致出价失真</td><td>校准层（isotonic / Platt）；出价上限保护；冷启动用行业均值</td><td>高估 CVR → 超成本；低估 → 拿不到量</td></tr>
+            <tr><td><b>预算平滑</b></td><td>预算在上午 10 点烧完，下午没量</td><td>pacing：按时段目标消耗，用反馈控制调节曝光概率</td><td>消耗曲线前高后低，广告主续费率跌</td></tr>
+            <tr><td><b>频控</b></td><td>同一用户被同一广告反复轰炸</td><td>用户 × 广告 × 天的计数（Redis），超限直接过滤</td><td>CTR 虚高但转化低，用户投诉</td></tr>
+            <tr><td><b>流量作弊</b></td><td>点击农场、模拟器、激励墙刷量</td><td>设备指纹、IP 聚集度、点击间隔分布、转化回传校验；IVT 模型</td><td>CTR 突然翻倍、转化率极低、某 IP 消耗异常</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout case">
+        <p><b>一个预算超投的例子：</b>某广告主日预算 5 万，晚上 21 点已经消耗 5.8 万。原因不是计费错，而是<b>pacing 用的消耗数据延迟 15 分钟</b>，而晚高峰 QPS 是白天的 3 倍——15 分钟足够多花掉 8000 元。修复方式是把消耗计数改成准实时（流式聚合，延迟 &lt; 1 分钟），并在预算消耗到 90% 时把曝光概率线性压到 0。</p>
+        <p><b>广告系统的容错原则：任何依赖 T+1 数据的控制回路，都不能用来做分钟级的预算决策。</b></p>
+      </div>
+
+      <div class="callout warn">
+        <p><b>作弊识别不要只看 CTR。</b>真实的作弊流量往往是「点击多、停留短、无转化、设备集中」。比较有效的组合特征：点击间隔方差极小、同一 IP 下设备数异常、点击后 1 秒内退出、从无深页行为。单看 CTR 高，会把「素材特别好」的广告也误杀。</p>
+      </div>
+
+      <h3>政务 / 行业场景：合规、可解释、公平性（简述）</h3>
+      <p>这类场景的第一性原则和互联网相反：<b>不是「效果最大化」，而是「不出错、说得清、可审计」</b>。三个硬约束：</p>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>合规</h4>
+          <p>数据最小化：只收集与政策匹配直接相关的字段；敏感字段（身份证、健康状况）不进入模型，只做规则判断；全链路留痕，能回答「这条推荐依据什么」。</p>
+        </div>
+        <div class="card teal">
+          <h4>可解释</h4>
+          <p>输出必须带理由：命中哪条政策条件、匹配了哪些关键词、企业哪项资质符合。模型只做排序，不做「是否推荐」的最终决定——<b>规则优先，模型兜底</b>。</p>
+        </div>
+        <div class="card amber">
+          <h4>公平性</h4>
+          <p>按企业规模 / 地域 / 行业分组评估曝光率与通过率，差距超过 5 个百分点要解释。不能因为「小微企业历史数据少」就系统性少推。</p>
+        </div>
+      </div>
+      <p class="small">这块的完整做法（规则引擎、语义召回、漏推 / 误推评估、公平性指标）在项目二里展开，这里只要求你能说出「为什么政务不能纯用大模型」：不可解释、不可审计、会编造，而且漏推的代价远大于误推。</p>
+      <h2 id="monitor"><span class="kicker">MONITORING</span>监控体系与指标下跌归因</h2>
+      <p class="lead">监控的目的不是「出事了大喊」，而是「在用户投诉之前，先知道是哪一层坏了」。所以指标必须分层，且每层都要能单独看。</p>
+
+      <h3>四类指标，缺一不可</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类别</th><th>关键指标</th><th>正常范围</th><th>告警阈值</th><th>看它为了回答什么</th></tr></thead>
+          <tbody>
+            <tr><td><b>业务</b></td><td>CTR、人均时长、人均曝光、转化率、次日留存、负反馈率</td><td>按基线，±3% 内波动</td><td>CTR 相对跌 &gt; 2% 持续 30min</td><td>「用户是不是不喜欢了」</td></tr>
+            <tr><td><b>系统</b></td><td>QPS、P99、P50、错误率、超时率、降级次数、CPU / GPU 利用率</td><td>P99 &lt; 100ms，错误率 &lt; 0.1%</td><td>P99 &gt; 150ms 或错误率 &gt; 1%</td><td>「服务是不是扛不住了」</td></tr>
+            <tr><td><b>模型</b></td><td>分数均值 / 分位数、校准误差 ECE、特征缺失率、PSI、单特征 AUC</td><td>分数均值日间波动 &lt; 5%</td><td>ECE &gt; 0.05，缺失率 &gt; 2%</td><td>「模型是不是在说胡话」</td></tr>
+            <tr><td><b>数据</b></td><td>日志量、日志延迟、埋点字段完整率、样本量、分区产出时间</td><td>日环比 ±10%</td><td>日志量 &lt; 70% 或延迟 &gt; 2h</td><td>「我们看到的数是不是真的」</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout case">
+        <p><b>为什么一定要有「数据」这一类：</b>某次 CTR 从 5.1% 跌到 4.3%，值班同学查了两小时模型和特征，最后发现是客户端某一版本把曝光埋点从「渲染时上报」改成了「曝光 1 秒后上报」，导致短停留曝光少报了 12%——<b>分子没变、分母变了</b>。如果数据层有「各客户端版本的曝光量占比」看板，五分钟就能定位。</p>
+      </div>
+
+      <h3>指标下跌的排查树</h3>
+      <p>顺序固定为 <b>数据 → 特征 → 模型 → 策略 → 外部</b>。理由很简单：越靠前越便宜、越常见、越容易证伪。反着查，你会在模型上浪费一整天。</p>
+
+      <div class="chart">
+        <svg viewBox="0 0 880 330" role="img" aria-label="指标下跌排查树">
+          <defs>
+            <marker id="tr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 z" fill="#cbd5e1"/>
+            </marker>
+          </defs>
+          <g font-family="sans-serif">
+            <rect x="360" y="8" width="160" height="42" rx="9" fill="#111827"/>
+            <text x="440" y="34" text-anchor="middle" font-size="12.5" font-weight="700" fill="#fff">CTR / 时长 下跌</text>
+
+            <path d="M440 50 V78" stroke="#cbd5e1" stroke-width="1.6" fill="none"/>
+            <path d="M88 78 H792" stroke="#cbd5e1" stroke-width="1.6" fill="none"/>
+            <g stroke="#cbd5e1" stroke-width="1.6" fill="none" marker-end="url(#tr)">
+              <path d="M88 78 V96"/><path d="M264 78 V96"/><path d="M440 78 V96"/>
+              <path d="M616 78 V96"/><path d="M792 78 V96"/>
+            </g>
+
+            <!-- 1 数据 -->
+            <rect x="12" y="100" width="152" height="188" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="88" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4f46e5">① 数据</text>
+            <g font-size="9.6" fill="#475467">
+              <text x="26" y="144">日志量 &lt; 70%？</text>
+              <text x="26" y="162">曝光去重后变了吗？</text>
+              <text x="26" y="180">分区产出延迟？</text>
+              <text x="26" y="198">埋点字段完整率？</text>
+              <text x="26" y="216">客户端版本分布变了？</text>
+              <text x="26" y="234">样本量是否足够？</text>
+            </g>
+            <text x="88" y="270" text-anchor="middle" font-size="9" fill="#98a2b3">→ 数仓同学 5 分钟能答</text>
+
+            <!-- 2 特征 -->
+            <rect x="188" y="100" width="152" height="188" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="264" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4f46e5">② 特征</text>
+            <g font-size="9.6" fill="#475467">
+              <text x="202" y="144">缺失率突增？</text>
+              <text x="202" y="162">PSI &gt; 0.25？</text>
+              <text x="202" y="180">特征版本变了？</text>
+              <text x="202" y="198">新鲜度 &gt; 30min？</text>
+              <text x="202" y="216">默认值被改了？</text>
+              <text x="202" y="234">时区 / 单位错位？</text>
+            </g>
+            <text x="264" y="270" text-anchor="middle" font-size="9" fill="#98a2b3">→ 对照训练期分布</text>
+
+            <!-- 3 模型 -->
+            <rect x="364" y="100" width="152" height="188" rx="9" fill="#fff" stroke="#c7d2fe"/>
+            <text x="440" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4f46e5">③ 模型</text>
+            <g font-size="9.6" fill="#475467">
+              <text x="378" y="144">今天发版了吗？</text>
+              <text x="378" y="162">分数均值偏移？</text>
+              <text x="378" y="180">校准 ECE 变大？</text>
+              <text x="378" y="198">推理超时降级？</text>
+              <text x="378" y="216">双端打分一致吗？</text>
+              <text x="378" y="234">模型文件加载对了吗？</text>
+            </g>
+            <text x="440" y="270" text-anchor="middle" font-size="9" fill="#98a2b3">→ 先回滚，再分析</text>
+
+            <!-- 4 策略 -->
+            <rect x="540" y="100" width="152" height="188" rx="9" fill="#fff" stroke="#e4e8f0"/>
+            <text x="616" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0d9488">④ 策略 / 实验</text>
+            <g font-size="9.6" fill="#475467">
+              <text x="554" y="144">规则 / 黑名单变了？</text>
+              <text x="554" y="162">重排参数动了？</text>
+              <text x="554" y="180">实验重叠 / SRM？</text>
+              <text x="554" y="198">缓存 key 变了？</text>
+              <text x="554" y="216">频控收紧了？</text>
+              <text x="554" y="234">流量比例被调整？</text>
+            </g>
+            <text x="616" y="270" text-anchor="middle" font-size="9" fill="#98a2b3">→ 看变更记录</text>
+
+            <!-- 5 外部 -->
+            <rect x="716" y="100" width="152" height="188" rx="9" fill="#fff" stroke="#e4e8f0"/>
+            <text x="792" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#b45309">⑤ 外部</text>
+            <g font-size="9.6" fill="#475467">
+              <text x="730" y="144">节假日 / 大促？</text>
+              <text x="730" y="162">竞品活动？</text>
+              <text x="730" y="180">舆情 / 热点事件？</text>
+              <text x="730" y="198">客户端改版？</text>
+              <text x="730" y="216">季节 / 天气？</text>
+              <text x="730" y="234">渠道买量结构？</text>
+            </g>
+            <text x="792" y="270" text-anchor="middle" font-size="9" fill="#98a2b3">→ 对比历史同期</text>
+
+            <text x="440" y="312" text-anchor="middle" font-size="10" fill="#98a2b3">从左到右 = 从便宜到贵。前两步能解释 70% 的异常。</text>
+          </g>
+        </svg>
+        <div class="cap">排查树：<b>先证伪数据，再证伪特征</b>。如果日志量本身就少了 20%，后面所有分析都没有意义。</div>
+      </div>
+
+      <p>每一层的判断标准，最好提前固化成一句话，值班时不用现想：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>一句话判据</th><th>常用工具</th><th>典型耗时</th></tr></thead>
+          <tbody>
+            <tr><td>数据</td><td>「今天的分母和昨天是同一批人、同一个口径吗？」</td><td>日志量看板、埋点校验、分区产出监控</td><td>5~10 分钟</td></tr>
+            <tr><td>特征</td><td>「线上取的这版特征，和模型训练时看到的是同一个分布吗？」</td><td>PSI 看板、缺失率、抽样比对</td><td>15~30 分钟</td></tr>
+            <tr><td>模型</td><td>「线上跑的是我以为的那个 model_id 吗？它打出的分正常吗？」</td><td>模型注册表、分数分布、双端一致性</td><td>10 分钟（先回滚）</td></tr>
+            <tr><td>策略</td><td>「除了模型，今天还有谁改了这个场景的行为？」</td><td>变更系统、实验平台、配置中心</td><td>10 分钟</td></tr>
+            <tr><td>外部</td><td>「去年同期、上周同一天，是不是也这样？」</td><td>历史曲线、竞品监测、舆情</td><td>30 分钟以上</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout tip">
+        <p><b>复盘要留下三样东西：</b>① 时间线（几点发现、几点定位、几点恢复）；② 直接原因与根本原因（「特征缺失」是直接原因，「新物品没有回填任务」才是根本原因）；③ 一条能自动拦住同类问题的监控或校验。<b>没有第三样的复盘，等于没做。</b></p>
+      </div>
+      <h2 id="recap"><span class="kicker">RECAP</span>一页速记：上线前该背下来的六句话</h2>
+      <p class="lead">工程部分最怕"都知道一点、串不起来"。合上页面前，用这六句把整章串一遍。</p>
+      <div class="card">
+        <ol>
+          <li><b>100ms 是设计出来的，不是测出来的：</b>召回 20–30ms、粗排约 10ms、精排约 35ms、重排约 5ms，剩下的给网络与序列化。<b>每一层都必须有超时和降级</b>——没有降级方案的链路等于没有 SLA。</li>
+          <li><b>特征一致性靠四个抓手：</b>一份代码（离线在线同源）、同一时间语义（<code>event_time</code> 而不是处理时间）、版本号 + 可回填、监控缺失率与分布漂移。少一个，早晚出事故。</li>
+          <li><b>上线五步：</b>导出并校验（特征顺序、归一化参数、embedding 表）→ shadow 比对 → 1% → 5%~10% → 全量；<b>回滚目标 30 秒</b>，靠模型热切换 + 配置开关，不靠重新发版。</li>
+          <li><b>实验可信四件事：</b>用户级 hash 分流（同用户始终同组）、先算样本量、看显著性、同时盯护栏指标（延迟、负反馈、覆盖率）。只盯 CTR 的实验结论不可信。</li>
+          <li><b>排查顺序永远是"先便宜后贵"：</b>看日志 → 看分群 → 看单特征 → 做实验 → 最后才怀疑模型。一上来就说"模型不行"，通常会被数据打脸。</li>
+          <li><b>监控至少四类：</b>流量、延迟、效果（CTR/时长）、质量（特征缺失率、分布漂移）。只监控 CTR，等于等用户投诉你。</li>
+        </ol>
+      </div>
+
+      <h2 id="quiz"><span class="kicker">CHECK</span>自查：6 道必须答得上来的问题</h2>
+      <p class="lead">这 6 道覆盖了本章的核心。能不看稿讲清楚，工程这一关就算过了；讲不清的地方，回到对应小节再读一遍。</p>
+
+      <details class="qa">
+        <summary>为什么离线 AUC 提升 1% 线上可能完全没变化？</summary>
+        <div class="ans">
+          <p>因为两个指标衡量的不是同一件事。AUC 看的是<b>全库、全候选</b>的排序质量，而线上只消费<b>前 10 个位置</b>。如果提升主要来自中后段（比如长尾物品排得更准了），用户根本感知不到。</p>
+          <p>另外三种常见原因：<b>①</b> 离线评估带了位置偏差，AUC 涨的是「位置 → 点击」而非相关性；<b>②</b> 离线样本只来自曝光空间，和服务空间不一致；<b>③</b> AUC 涨了但校准变差，精排分数被下游按 eCPM 混排时反而不占优。</p>
+          <p>所以正确做法是：离线看 AUC + 校准 + 分位置 NDCG，上线前做 shadow，最后只认线上 A/B。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>特征穿越怎么发现？给我一套可执行的检查顺序。</summary>
+        <div class="ans">
+          <p><b>第一步，看单特征 AUC。</b>任何一个特征单独用就能到 0.75 以上，立刻怀疑。真实业务里除了「强 ID 类」特征，很少有这么强的信号。</p>
+          <p><b>第二步，审计时间线。</b>把这个特征的窗口右端写出来：是「样本时刻」还是「今天」？如果是后者，基本可以判定穿越。再检查是否用了点击后才产生的字段（完播率、转化金额、退款率）。</p>
+          <p><b>第三步，做「去掉该特征重训」的消融。</b>AUC 掉 3 个点以上、且线上效果不变，说明这个特征在线上本来就没有可用值，离线涨的全是假的。</p>
+          <p><b>第四步，按天切开验证。</b>穿越特征在越靠近「数据截止日」的样本上越强，AUC 会随时间出现异常上升的斜率。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>某一路召回超时了怎么办？为什么不干脆给全链路 200ms 算了？</summary>
+        <div class="ans">
+          <p>多路召回是<b>并行</b>的，单路超时（超过 20ms）直接丢弃该路结果，用剩下几路继续，召回候选从 2000 降到 1300 左右，召回率损失 3~5 个点，用户基本无感。如果全部失败，落到 Redis 里的「热门 + 同城」兜底列表。</p>
+          <p>不能给 200ms 的原因是<b>产品约束</b>：首屏超过 100ms 用户能明显感到卡顿，超过 200ms 会开始退出。而且延迟预算是<b>逐层扣减</b>的——你给召回 200ms，精排就没时间了。真正该做的是把总 deadline 传下去，每层用「剩余时间」做超时。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>新物品完全没有曝光，怎么评估它的召回 / 排序效果？</summary>
+        <div class="ans">
+          <p>没有曝光就没有 label，不能用 CTR 评估，只能用<b>代理信号 + 受控实验</b>：</p>
+          <p><b>①</b> 内容侧评估：用标题 / 封面 / 类目向量算「与用户历史兴趣的语义相似度」，看它是否能进入召回池（Recall@K 的内容代理版）。<b>②</b> 保量曝光：每天强制给新物品 500 次曝光，用这批<b>随机流量</b>算无偏 CTR，再和同品类老物品比。<b>③</b> 看长期指标：30 日存活率、新物品进入 Top10 的比例、作者覆盖率。</p>
+          <p>关键是不能用「当前策略产生的日志」评估新物品——它没被推过，日志里根本没有它，这就是反馈闭环下的样本偏差。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>A/B 跑了两天，p=0.02，能直接上线吗？</summary>
+        <div class="ans">
+          <p>不能。先过三道关：</p>
+          <p><b>① SRM：</b>实际分流比例是否符合设计（卡方 p &gt; 0.001）。不均则结论作废。<b>② 周期：</b>两天没有覆盖完整周，工作日和周末的行为差异很大；同时要警惕 novelty effect——新策略前几天通常虚高，第 7 天回落后可能归零。<b>③ 指标：</b>主指标是否实验前就指定？护栏指标（延迟、负反馈、退订）有没有变差？</p>
+          <p>实操标准：至少跑满 7 天，看置信区间而不是只看 p 值，主指标正向且护栏指标不劣化，才放量。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>线上 CTR 突然跌了 5%，说一下你的排查顺序。</summary>
+        <div class="ans">
+          <p>按 <b>数据 → 特征 → 模型 → 策略 → 外部</b> 走，从便宜到贵：</p>
+          <p><b>数据：</b>日志量、去重后的曝光数、分区产出、埋点版本。分母变了最常见，五分钟能排除。<b>特征：</b>缺失率、PSI、特征版本、新鲜度；对照训练期分布。<b>模型：</b>今天有没有发版？有就先回滚；再看分数分布和 ECE；确认线上 model_id 是不是你以为的那个。<b>策略：</b>规则、重排、频控、缓存 key、实验重叠。<b>外部：</b>节假日、竞品、舆情、客户端改版。</p>
+          <p>同时看 P99 和降级次数：如果精排超时率涨了，CTR 跌就是降级的副产品，不是模型问题。</p>
+        </div>
+      </details>
+
+      <div class="callout tip">
+        <p><b>本章的最小可用结论：</b>上线前问自己四个问题——特征在线上取得到吗？延迟超了会退到哪？模型怎么灰度、怎么回滚？指标跌了先看哪一层？四个都能答上来，才算真的能把模型变成服务。</p>
+      </div>
+      <div class="pager">
+        <a href="models.html"><span>上一篇</span><b>← 02 · 召回与排序模型演进</b></a>
+        <a class="next" href="project-1.html"><span>下一篇</span><b>项目一 · 短视频推荐系统 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/main.js"></script>
+<script>
+  if (window.Chart) {
+    Chart.bars("#lat-chart", [
+      { name: "精排", ms: 40 },
+      { name: "召回（多路并行）", ms: 20 },
+      { name: "网络与序列化", ms: 20 },
+      { name: "粗排", ms: 15 },
+      { name: "重排", ms: 5 }
+    ], {
+      valueKey: "ms", format: "int", color: "#4f46e5",
+      caption: "各阶段 <b>P99</b> 预算（ms）。五项加起来正好 100ms——按最坏情况相加来倒推，是最安全的分配方式。"
+    });
+  }
+</script>
+</body>
+</html>

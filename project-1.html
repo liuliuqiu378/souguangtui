@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>项目一：「抖风」短视频推荐系统 · 搜广推：从 0 到能干活</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="project-1" data-title="项目一：短视频推荐系统">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <section class="hero">
+        <h1>「抖风」短视频推荐系统：把首页从热门排序升级成个性化推荐</h1>
+        <p>一个能跑、能讲、能被追问的全链路仿真项目。2 万用户、5000 条视频、317,866 条曝光日志全部由隐变量模型生成；
+          三路召回、四代排序模型、重排策略与 120ms 延迟预算都落到具体数字上。页面里的每个指标都能在
+          <code style="background:rgba(255,255,255,.14);color:#e0e7ff">scripts/gen_project1.py</code> 里复现。</p>
+        <div class="tags">
+          <span>角色：推荐算法工程师</span>
+          <span>周期：6 周（单人）</span>
+          <span>20,000 用户 · 5,000 视频 · 317,866 曝光</span>
+          <span>Python · PyTorch · sklearn · FAISS</span>
+          <span>双塔召回 · DIN · 校准 · 模拟 A/B</span>
+        </div>
+      </section>
+
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>一句话定位</h4>
+          <p>把短视频产品的首页推荐，从"按热度排"升级为"按人排"，并且把召回—排序—重排—部署这条链路完整走一遍，
+            用离线指标和模拟重放证明每一步的收益来自哪里。</p>
+        </div>
+        <div class="card teal">
+          <h4>我的职责</h4>
+          <p>数据仿真与口径设计、特征工程、三路召回、LR/FM/DeepFM/DIN 四代模型、重排规则、离线评估与延迟预算。
+            没有数据标注团队，所以"label 怎么定义"也是我定的。</p>
+        </div>
+        <div class="card amber">
+          <h4>结果先行</h4>
+          <p>排序 AUC 从 0.5（均值基线）到 <b>0.8584</b>（DIN）；双塔 Recall@100 <b>11.29%</b>，
+            高于热门的 9.66%；覆盖率 11.54%。模型预估存在高估，处理方式在"校准"一节。</p>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="item"><div class="v tnum">20,000</div><div class="l">用户数</div></div>
+        <div class="item"><div class="v tnum">5,000</div><div class="l">视频数（内容池）</div></div>
+        <div class="item"><div class="v tnum">317,866</div><div class="l">曝光日志条数</div></div>
+        <div class="item"><div class="v tnum">13.82<small>%</small></div><div class="l">整体 CTR</div></div>
+        <div class="item"><div class="v tnum">57.3<small>%</small></div><div class="l">点击后完播率</div></div>
+        <div class="item"><div class="v tnum">30<small> 天</small></div><div class="l">日志跨度</div></div>
+      </div>
+
+      <div class="toc">
+        <b>本页目录</b>
+        <ol>
+          <li><a href="#bg">业务背景与目标</a></li>
+          <li><a href="#data">数据说明与探查</a></li>
+          <li><a href="#problem">问题定义与评估口径</a></li>
+          <li><a href="#arch">方案总览</a></li>
+          <li><a href="#recall">召回层：三路互补</a></li>
+          <li><a href="#rank">排序层：LR → DIN</a></li>
+          <li><a href="#rerank">重排与策略</a></li>
+          <li><a href="#serving">线上部署方案</a></li>
+          <li><a href="#result">效果与复盘</a></li>
+          <li><a href="#gap">离真实上线还差什么</a></li>
+          <li><a href="#qa">面试拷问 8 题</a></li>
+        </ol>
+      </div>
+
+      <h2 id="bg"><span class="kicker">BACKGROUND</span>业务背景：三个问题，一个目标</h2>
+      <p class="lead">这是一个"首页推荐"项目，不是推荐中台。范围划得越窄，越能把每一步讲清楚。</p>
+      <p>「抖风」是一个短视频产品（仿真设定），首页是唯一的流量入口。改造前，首页由运营配置的热门榜驱动：
+        所有人看到同一批视频，按近 7 天点击量排序。数据里能看到三个具体症状：</p>
+
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>新用户留不住</h4>
+          <p>新用户（注册 &lt; 7 天）的 CTR 是 <b>14.68%</b>，反而高于老用户的 <b>13.82%</b>。
+            但点击多不等于满意——热门内容对新用户是"看起来热闹、和他没关系"，点完就走。缺的是兴趣匹配，不是曝光量。</p>
+        </div>
+        <div class="card teal">
+          <h4>老用户消费不深</h4>
+          <p>点击之后只有 <b>57.3%</b> 完播、<b>12.64%</b> 点赞。人均历史点击序列长度仅 <b>1.16</b> 条，
+            说明大量曝光没被点开，点开的内容也没能形成连续消费。</p>
+        </div>
+        <div class="card amber">
+          <h4>内容池长尾</h4>
+          <p>曝光量后 50% 的视频只拿到 <b>30.05%</b> 的曝光，是其数量占比的 0.6 倍。同时头部 1% 内容拿到 3.15% 曝光。
+            热门榜把"分发"变成了"再分配头部"。</p>
+        </div>
+      </div>
+
+      <h3>指标体系：北极星只有一个</h3>
+      <p>短视频的核心不是"点了多少"，而是"看了多久"。所以北极星指标定为<b>人均有效播放时长</b>，
+         CTR 只是过程指标——CTR 涨、时长短，是典型的标题党，必须在复盘里拆开看。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层级</th><th>指标</th><th>口径</th><th>本项目现状</th><th>目标</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill">北极星</span></td><td>人均有效播放时长</td><td>Σ(play_ratio × duration_sec) / 活跃用户数，按天统计</td><td>日志缺 session 边界，离线以 play_ratio 均值代理</td><td>+5%</td></tr>
+            <tr><td><span class="pill n">过程</span></td><td>CTR</td><td>点击曝光 / 总曝光</td><td class="tnum">13.82%</td><td>+8%（相对）</td></tr>
+            <tr><td><span class="pill n">过程</span></td><td>完播率</td><td>完播数 / 点击数（条件概率）</td><td class="tnum">57.3%</td><td>不下降</td></tr>
+            <tr><td><span class="pill n">过程</span></td><td>点赞率</td><td>点赞数 / 点击数</td><td class="tnum">12.64%</td><td>不下降</td></tr>
+            <tr><td><span class="pill n">过程</span></td><td>次日留存</td><td>当日新增用户次日仍有曝光 / 当日新增</td><td>数据中没有留存字段</td><td>+1pp（模拟假设，见第 9 节）</td></tr>
+            <tr><td><span class="pill y">护栏</span></td><td>内容覆盖率</td><td>当日被曝光的内容数 / 内容池总量</td><td class="tnum">双塔召回 11.54%</td><td>不低于热门召回的 5 倍</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <p><b>这次要解决的问题，写死一句话：</b>把首页推荐从"热门排序"升级为"个性化排序"，在曝光总量不变的前提下，
+          目标 CTR 相对 +8%、人均有效播放时长相对 +5%，同时把内容覆盖率从 2% 提到 10% 以上。</p>
+        <p><b>明确不做：</b>直播推荐、搜索、广告变现、多目标融合的线上实现。范围外的东西只在"如果真实上线"一节里说明。</p>
+      </div>
+
+      <div class="callout case">
+        <p><b>为什么先做排序、不先做召回？</b>因为改造前根本没有"召回"这个概念——所有人看同一个热门榜。
+          热门榜本身就是一路覆盖率极低的召回。先补召回，精排才有东西可排；只换精排模型，收益会被候选集的同质化吃掉。
+          这个判断在后面被数据验证：热门的覆盖率只有 2%。</p>
+      </div>
+
+      <h2 id="data"><span class="kicker">DATA</span>数据说明：先证明数据"是真的"，再谈模型</h2>
+      <p class="lead">面试里最容易被问穿的一句是"你的数据哪来的"。这里不回避：数据是仿真的，但生成机制写死在脚本里，
+        因果结构清晰，所以模型之间的差异可解释、可复现。</p>
+
+      <h3>1）规模与文件</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>文件</th><th>行数</th><th>内容</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>data/p1_users.csv</code></td><td class="tnum">20,000</td><td>用户属性表</td><td>年龄、性别、城市线级、活跃度、双兴趣、注册天数</td></tr>
+            <tr><td><code>data/p1_items.csv</code></td><td class="tnum">5,000</td><td>内容属性表</td><td>品类、作者、时长、发布时间、质量分、近 7 日统计</td></tr>
+            <tr><td><code>data/p1_events.csv.gz</code></td><td class="tnum">317,866</td><td>曝光日志（全量）</td><td>一次曝光一行，30 天，含点击/完播/点赞/播放比例</td></tr>
+            <tr><td><code>data/p1_events_sample.csv</code></td><td class="tnum">500</td><td>曝光日志抽样</td><td>便于直接打开看，页面样例即来自此文件</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2）字段说明：用真实列名，不用"用户特征 1"</h3>
+      <p><b>用户表</b>——注意兴趣是"品类名"而不是 id，这是业务库常见的存法，也解释了后面为什么用品类序列做 DIN。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>含义</th><th>类型 / 取值</th><th>真实样例</th></tr></thead>
+          <tbody>
+            <tr><td><code>user_id</code></td><td>用户主键</td><td>int，0–19999</td><td class="tnum">0</td></tr>
+            <tr><td><code>age_bucket</code></td><td>年龄段索引</td><td>int，0–5（对应 18-24 … 50+）</td><td class="tnum">0</td></tr>
+            <tr><td><code>gender</code></td><td>性别</td><td>0 / 1</td><td class="tnum">1</td></tr>
+            <tr><td><code>city_tier</code></td><td>城市线级</td><td>int，1–4</td><td class="tnum">4</td></tr>
+            <tr><td><code>active_level</code></td><td>活跃度分层</td><td>int，1–5</td><td class="tnum">3</td></tr>
+            <tr><td><code>interest_0</code></td><td>主兴趣品类</td><td>12 个品类之一</td><td>健身</td></tr>
+            <tr><td><code>interest_1</code></td><td>次兴趣品类</td><td>12 个品类之一</td><td>旅行</td></tr>
+            <tr><td><code>register_days</code></td><td>注册天数</td><td>int，1–1199</td><td class="tnum">238</td></tr>
+            <tr><td><code>is_new</code></td><td>是否新用户（&lt;7 天）</td><td>0 / 1</td><td class="tnum">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><b>内容表</b>——<code>ctr_7d</code> 和 <code>finish_rate</code> 是用同一批日志回算的统计特征，
+        带噪、且包含未来信息，这是后面必须讨论"特征穿越"的原因。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>含义</th><th>类型 / 取值</th><th>真实样例</th></tr></thead>
+          <tbody>
+            <tr><td><code>item_id</code></td><td>视频主键</td><td>int，0–4999</td><td class="tnum">0</td></tr>
+            <tr><td><code>category</code></td><td>一级品类</td><td>12 类（搞笑/美食/游戏/影视/音乐/健身/科技/萌宠/旅行/美妆/教育/汽车）</td><td>美食</td></tr>
+            <tr><td><code>creator_id</code></td><td>作者 id</td><td>int，0–299</td><td class="tnum">220</td></tr>
+            <tr><td><code>duration_bucket</code></td><td>时长分桶</td><td>0-15s / 15-30s / 30-60s / 1-3min / 3min+</td><td>30-60s</td></tr>
+            <tr><td><code>duration_sec</code></td><td>时长（秒）</td><td>float</td><td class="tnum">147.1</td></tr>
+            <tr><td><code>publish_days</code></td><td>距今天数</td><td>int，0–90</td><td class="tnum">1</td></tr>
+            <tr><td><code>quality_score</code></td><td>内容质量分</td><td>float，0.02–0.99</td><td class="tnum">0.605</td></tr>
+            <tr><td><code>ctr_7d</code></td><td>近 7 日 CTR（回算）</td><td>float</td><td class="tnum">0.3333</td></tr>
+            <tr><td><code>finish_rate</code></td><td>近 7 日完播率（回算）</td><td>float</td><td class="tnum">0.6667</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><b>曝光日志表</b>——一行 = 一次曝光（不是一次点击）。<code>hist</code> 是该次曝光之前的历史点击 item 序列，
+        空格分隔，长度截断到 10；它决定了 DIN 能拿到的上下文。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>字段</th><th>含义</th><th>类型 / 取值</th><th>真实样例</th></tr></thead>
+          <tbody>
+            <tr><td><code>user_id</code></td><td>被曝光用户</td><td>int</td><td class="tnum">389</td></tr>
+            <tr><td><code>req_seq</code></td><td>该用户第几次请求</td><td>int，从 1 开始</td><td class="tnum">11</td></tr>
+            <tr><td><code>ts</code></td><td>曝光时间</td><td>datetime</td><td>2026-10-08 09:00</td></tr>
+            <tr><td><code>item_id</code></td><td>被曝光视频</td><td>int</td><td class="tnum">1030</td></tr>
+            <tr><td><code>position</code></td><td>展示位置</td><td>1–4</td><td class="tnum">1</td></tr>
+            <tr><td><code>hour_bucket</code></td><td>小时段</td><td>0–5（0-6 点 … 21-24 点）</td><td class="tnum">3</td></tr>
+            <tr><td><code>click</code></td><td>是否点击</td><td>0 / 1 —— 即 label</td><td class="tnum">1</td></tr>
+            <tr><td><code>finish</code></td><td>是否完播（点击后）</td><td>0 / 1</td><td class="tnum">1</td></tr>
+            <tr><td><code>like</code></td><td>是否点赞（点击后）</td><td>0 / 1</td><td class="tnum">1</td></tr>
+            <tr><td><code>play_ratio</code></td><td>播放进度</td><td>float，0–1，未点击为 0</td><td class="tnum">0.615</td></tr>
+            <tr><td><code>hist</code></td><td>曝光前的点击序列</td><td>空格分隔 item_id</td><td class="tnum">2277</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>3）真实样例：直接从 CSV 读，没有手写</h3>
+      <p>下面是 <code>p1_events_sample.csv</code> 里的 6 行原始记录（按 user_id 排序后抽样）。注意第 3、5、6 行是点击，
+        完播和点赞只在点击后才有意义；<code>hist</code> 为空说明这是该用户当天的第一次有效交互。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>user_id</th><th>req_seq</th><th>ts</th><th>item_id</th><th>position</th><th>hour</th><th>click</th><th>finish</th><th>like</th><th>play_ratio</th><th>hist</th></tr></thead>
+          <tbody>
+            <tr><td class="tnum">26</td><td class="tnum">25</td><td>2026-09-04 05:28</td><td class="tnum">3203</td><td class="tnum">2</td><td class="tnum">5</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.000</td><td class="tnum">3381 4193</td></tr>
+            <tr><td class="tnum">27</td><td class="tnum">13</td><td>2026-09-03 22:38</td><td class="tnum">354</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.000</td><td class="tnum">—</td></tr>
+            <tr><td class="tnum">389</td><td class="tnum">11</td><td>2026-10-08 09:00</td><td class="tnum">1030</td><td class="tnum">1</td><td class="tnum">3</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">0.615</td><td class="tnum">2277</td></tr>
+            <tr><td class="tnum">810</td><td class="tnum">12</td><td>2026-11-17 09:24</td><td class="tnum">1685</td><td class="tnum">3</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.935</td><td class="tnum">—</td></tr>
+            <tr><td class="tnum">1118</td><td class="tnum">14</td><td>2026-12-16 18:49</td><td class="tnum">1761</td><td class="tnum">1</td><td class="tnum">4</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">0</td><td class="tnum">0.814</td><td class="tnum">503 3313 3044 2831 3229</td></tr>
+            <tr><td class="tnum">1796</td><td class="tnum">7</td><td>2027-02-19 02:28</td><td class="tnum">2692</td><td class="tnum">2</td><td class="tnum">3</td><td class="tnum">1</td><td class="tnum">0</td><td class="tnum">1</td><td class="tnum">0.750</td><td class="tnum">439 985 1459</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">第 4 行 play_ratio 0.935 但没有完播——播放进度和完播不是同一个口径，这也是为什么不能用"完播"去反推 play_ratio。</p>
+
+      <div class="two-col">
+        <div>
+          <p><b>用户表样例</b>（<code>p1_users.csv</code>）</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>user_id</th><th>age</th><th>gender</th><th>city</th><th>active</th><th>interest_0</th><th>interest_1</th></tr></thead>
+              <tbody>
+                <tr><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">1</td><td class="tnum">4</td><td class="tnum">3</td><td>健身</td><td>旅行</td></tr>
+                <tr><td class="tnum">1</td><td class="tnum">4</td><td class="tnum">0</td><td class="tnum">4</td><td class="tnum">4</td><td>游戏</td><td>汽车</td></tr>
+                <tr><td class="tnum">2</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">3</td><td class="tnum">2</td><td>汽车</td><td>教育</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <p><b>内容表样例</b>（<code>p1_items.csv</code>）</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>item_id</th><th>category</th><th>creator</th><th>duration</th><th>publish</th><th>quality</th></tr></thead>
+              <tbody>
+                <tr><td class="tnum">0</td><td>美食</td><td class="tnum">220</td><td>30-60s</td><td class="tnum">1</td><td class="tnum">0.605</td></tr>
+                <tr><td class="tnum">1</td><td>搞笑</td><td class="tnum">50</td><td>15-30s</td><td class="tnum">10</td><td class="tnum">0.202</td></tr>
+                <tr><td class="tnum">2</td><td>科技</td><td class="tnum">38</td><td>1-3min</td><td class="tnum">1</td><td class="tnum">0.335</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <h3>4）数据是怎么生成的：因果结构，而不是随机数</h3>
+      <p>生成脚本的核心是一个隐变量模型。用户有一个 8 维偏好向量 <code>pref</code>，每条视频有一个 8 维主题向量
+        <code>item_vec</code>，点击概率由两者的内积、品类匹配、年龄先验、时长匹配、质量、时效、重复曝光、
+        位置偏差共同决定。关键代码（已精简）：</p>
+      <pre><code>dot  = np.sum(pref[u] * item_vec[items], axis=1) / math.sqrt(K)   # 兴趣匹配
+logit = (-6.15
+         + 2.15 * dot                                  # 个性化主信号
+         + age_cat_aff[age[u], cat[items]]              # 年龄 × 品类先验
+         + 0.72 * same0 + 0.40 * same1                  # 主/次兴趣匹配
+         + 0.55 * (dur_bucket[items] == dur_pref[u])    # 时长偏好
+         + 0.9  * (quality[items] - 0.5)                # 内容质量
+         + 1.1  * np.exp(-fresh_days[items] / 12.0)     # 时效衰减
+         + repeat                                       # 历史同品类点击次数 × 0.5
+         + np.array([0.62, 0.34, 0.16, 0.0])[pos - 1]   # 位置偏差
+         + quality_sens[u] * 0.5 * (quality[items] - 0.5)
+         + RNG.normal(0, 0.32, n))                      # 不可解释噪声
+p     = 1 / (1 + np.exp(-logit))
+click = (RNG.random(n) &lt; p).astype(int)</code></pre>
+
+      <p>点击之后的完播、点赞是<b>条件概率</b>，由内容质量和时长决定，与用户无关：</p>
+      <div class="formula">
+        finish_p = clip(0.42 + 0.42·quality − 0.055·duration_bucket + ε, 0.05, 0.97)<br>
+        like_p&nbsp;&nbsp; = clip(0.035 + 0.16·quality + ε, 0.005, 0.5)
+        <span class="note">所以"点击但没完播"不是数据缺失，而是这条内容本来就更容易被划走——这一点决定了多目标建模的可行性。</span>
+      </div>
+
+      <p>这三个设计决定了项目"能讲出东西"：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>仿真机制</th><th>对应的真实业务</th><th>对建模的影响</th></tr></thead>
+          <tbody>
+            <tr><td>用户向量 × 内容向量（权重 2.15）</td><td>兴趣匹配</td><td>个性化真的有效，双塔/DIN 有可学信号，不是纯噪声</td></tr>
+            <tr><td>曝光按 <code>pop ∝ exp(1.6·quality + 0.55·log(creator_heat) − fresh/60)</code> 采样</td><td>线上流量本身偏向头部</td><td>样本选择偏差：模型只见过被曝光的内容，热门召回的离线指标会被"喂"得偏高</td></tr>
+            <tr><td>位置 1–4 的固定加成 [0.62, 0.34, 0.16, 0]</td><td>首位偏差</td><td>位置特征进模型会学到一个"线上会变"的规律，必须固定基准位或做 debias</td></tr>
+            <tr><td>时效衰减 <code>exp(−days/12)</code></td><td>内容冷启动与新鲜度</td><td>新鲜度是一个真实有效特征，但也让"老内容"在训练集里被系统性低估</td></tr>
+            <tr><td>噪声 σ=0.32</td><td>用户行为的随机性</td><td>AUC 有天花板（不会到 0.99），0.85 左右是这份数据的合理水平</td></tr>
+            <tr><td>完播/点赞是点击后的条件概率</td><td>多目标、多任务</td><td>不能把全量曝光的 finish 当二分类样本，否则负样本定义就错了</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout tip">
+        <p><b>为什么这套数据能"学到东西"？</b>因为 label 是特征的函数：给定 (用户兴趣, 内容品类, 质量, 时效, 位置)，
+          点击概率有稳定的条件分布。模型只要能从特征里恢复出 <code>dot</code> 和品类匹配，AUC 就会显著高于 0.5。
+          同时噪声保证它不会变成"背答案"——这也是我敢把 AUC 0.8584 写出来的原因。</p>
+      </div>
+
+      <h3>5）数据探查：5 张图，每张都要能说出一句话</h3>
+      <p>下面所有图表的数据都来自 <code>data/p1_metrics.json</code> 的 <code>charts</code> 字段，由脚本直接从日志聚合，
+        没有一处是手工填的。图下面那句话才是重点——面试时讲图，讲的是结论。</p>
+
+      <div class="chart" id="c-cat"></div>
+      <p class="small"><b>这张图告诉我们：</b>品类之间的点击率差近 3.7 倍（搞笑 25.07% vs 旅行/萌宠 6.86%），
+        但曝光量也差了近 3 倍（40,419 vs 12,093/14,842）。所以品类 CTR 是"内容供给 × 受众规模"的混合结果，
+        直接把它当用户偏好会过拟合。正确用法是 <code>用户兴趣 × 品类</code> 的交叉特征，而不是单独一个品类 id。</p>
+
+      <div class="chart" id="c-pos"></div>
+      <p class="small"><b>这张图告诉我们：</b>第 1 位 15.28%、第 4 位 12.59%，首位相对末位高 21.4%，
+        而内容本身没有变。这就是位置偏差：日志里的"点击"同时包含了"内容好"和"位置好"两种原因。
+        把它当纯 label 学，模型会高估"排在前面的内容"，上线后一旦换排序，预估立刻失准。</p>
+
+      <div class="chart" id="c-funnel"></div>
+      <p class="small"><b>这张图告诉我们：</b>曝光到点击只留下 13.82%，点击到完播 57.3%，完播到点赞 22.1%（5,555 / 25,174）。
+        最大的流失在"曝光→点击"，但这不代表只优化 CTR：如果靠标题党把点击拉上去，完播和点赞会掉，
+        最终人均时长反而下降。北极星选时长，就是为了堵住这个漏洞。</p>
+
+      <div class="chart" id="c-tail"></div>
+      <p class="small"><b>这张图告诉我们：</b>曝光量前 50% 的内容拿走 69.95% 的曝光，后 50% 只拿 30.05%（数量占比的一半）；
+        头部 1% 拿到 3.15%，是均匀分布的 3.15 倍。这个集中度比真实短视频平台温和，但足以说明：
+        只做热门排序，长尾内容永远没有机会；召回层的覆盖率指标必须单独考核。</p>
+
+      <div class="chart" id="c-dur"></div>
+      <p class="small"><b>这张图告诉我们：</b>5000 条视频里 15-30s（1,782 条）和 30-60s（1,734 条）合计占 70.3%，
+        3 分钟以上只有 86 条（1.7%）。内容池以短视频为主，因此时长特征有一个很强的先验；
+        反过来，长视频样本极少，模型对"长视频 + 某类用户"的估计会不稳，这也是后面要做分桶统计的原因。</p>
+
+      <div class="callout case">
+        <p><b>探查阶段最重要的一条结论：</b>这份数据里最有效的信号是"用户 × 品类/质量/时效"的匹配，
+          而不是"哪个品类整体 CTR 高"。这直接决定了后面的特征设计：要做交叉特征和行为序列，
+          而不是把 12 个品类 one-hot 丢进 LR 就完事。LR 的 0.8473 已经证明了这一点，DIN 只是把这层匹配做得更细。</p>
+      </div>
+
+      <h2 id="problem"><span class="kicker">PROBLEM</span>问题定义与评估口径：先把"什么叫对"定下来</h2>
+      <p class="lead">推荐项目最容易翻车的地方不是模型，是口径。label 怎么定、样本怎么切、离线看什么，
+        这三件事错了，后面所有数字都不可信。</p>
+
+      <h3>1）label 定义</h3>
+      <div class="formula">
+        y = 1&nbsp;&nbsp;if click == 1（曝光且点击）<br>
+        y = 0&nbsp;&nbsp;if click == 0（曝光但未点击）<br>
+        <span class="note">样本单位是"一次曝光"，不是"一次请求"，也不是"一个用户"。未点击的曝光就是负样本。</span>
+      </div>
+      <p>三个容易错的口径，这里明确写死：</p>
+      <ul class="checklist">
+        <li><b>未点击 = 负样本，不是缺失。</b>用户看到了但没点，这是明确的负反馈；把它丢掉会让 CTR 被高估到 30% 以上。</li>
+        <li><b>完播、点赞不参与点击模型。</b>它们是点击后的条件事件，只用来评估"消费深度"和后续多目标建模。</li>
+        <li><b>不构造"未曝光"负样本。</b>数据里没有未曝光的反事实，硬造会把"没被推荐"当成"不喜欢"，
+          这是样本选择偏差的经典错误。</li>
+      </ul>
+
+      <h3>2）样本构造：按用户内部时间切 80/20</h3>
+      <p>脚本里的切分只有 4 行，但每一行都有原因：</p>
+      <pre><code>pos_in_user = events.groupby("user_id").cumcount().values     # 用户内序号
+user_cnt    = events.groupby("user_id").transform("size").values
+is_test     = pos_in_user &gt;= user_cnt * 0.8                   # 每个用户后 20%
+tr, te      = ~is_test, is_test</code></pre>
+      <div class="grid c2">
+        <div class="card accent">
+          <h4>为什么不能随机切？</h4>
+          <p>同一用户相邻几次曝光的行为高度相关，<code>hist</code> 序列、<code>ctr_7d</code> 统计也都来自全期日志。
+            随机切会让测试样本的"历史"包含测试期的未来行为，AUC 会明显虚高。
+            更隐蔽的是：<code>ctr_7d</code> 本身就是用全量日志回算的，随机切分时它把 label 的信息带进了训练集。</p>
+        </div>
+        <div class="card teal">
+          <h4>为什么不能按全局时间切？</h4>
+          <p>日志按用户顺序生成，全局切最后 20% 会把一批用户整段划到测试集——这些用户在训练集里没有任何历史，
+            序列特征全空，模型只能靠内容特征猜。这不是"难"，而是<b>线上不会出现的情况</b>：
+            真实服务时每个用户都有历史（哪怕是空历史的新用户，也要走单独的冷启动策略）。</p>
+        </div>
+      </div>
+      <p><b>按用户内部时间切</b>同时满足两点：训练用的是"这个用户的过去"，测试用的是"这个用户的未来"，
+        和线上"用历史预测下一次曝光"的时序关系一致；每个测试用户都有训练期历史，不会出现"无法服务"的样本。</p>
+
+      <h3>3）离线指标与线上指标的关系</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th>衡量什么</th><th>本项目取值</th><th>局限</th></tr></thead>
+          <tbody>
+            <tr><td><b>AUC</b></td><td>排序能力：随机取一正一负，正样本排在前的概率</td><td class="tnum">0.8473 → 0.8584</td><td>只保序，不保绝对值；对位置偏差不敏感</td></tr>
+            <tr><td><b>LogLoss</b></td><td>概率预估质量（含校准）</td><td class="tnum">0.2939 → 0.2867</td><td>受样本不平衡影响，绝对值难跨数据集比较</td></tr>
+            <tr><td><b>校准</b></td><td>预估均值是否等于真实 CTR</td><td class="tnum">0.1527 vs 0.1378（DIN）</td><td>重排只保序时可放宽，但多目标融合必须校准</td></tr>
+            <tr><td><b>线上 CTR</b></td><td>真实收益</td><td>见第 9 节（模拟）</td><td>受位置偏差、曝光量、季节影响</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>AUC 涨了，线上一定涨吗？</b>不一定。AUC 衡量的是"全体曝光上的排序"，而线上只展示 Top10；
+          真正决定收益的是<b>头部排序</b>和<b>曝光分配</b>。另外位置偏差会让离线 AUC 包含"位置"这个线上会变的因素。
+          所以本项目除了 AUC，还看 Recall@100（召回能不能把目标捞回来）和覆盖率（内容池是否被打开）。</p>
+      </div>
+
+      <h2 id="arch"><span class="kicker">ARCHITECTURE</span>方案总览：五层链路，每层只做一件事</h2>
+      <p class="lead">推荐系统的复杂度不在某一个模型，而在"每一层该承担什么"。下面这张链路图是后面所有章节的骨架。</p>
+
+      <div class="pipeline">
+        <div class="step"><b>多路召回</b><span>5000 → 300<br>热门 / ItemCF / 双塔</span></div>
+        <div class="step"><b>合并去重</b><span>300 → ~260<br>按 item 去重 + 来源加权</span></div>
+        <div class="step"><b>粗排</b><span>260 → 100<br>轻量 LR / 双塔分</span></div>
+        <div class="step"><b>精排</b><span>100 → 50<br>DIN（含序列）</span></div>
+        <div class="step"><b>重排</b><span>50 → 10<br>MMR + 打散</span></div>
+        <div class="step"><b>曝光</b><span>返回 + 埋点<br>记录 position</span></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>输入 → 输出</th><th>用什么</th><th>延迟预算（P99）</th><th>主要考核</th></tr></thead>
+          <tbody>
+            <tr><td>召回</td><td>全库 5000 → 300</td><td>热门榜、ItemCF、双塔 + FAISS</td><td class="tnum">25ms（三路并行）</td><td>Recall@100、覆盖率</td></tr>
+            <tr><td>合并去重</td><td>300 → ~260</td><td>规则：按来源权重排序、同 item 合并</td><td class="tnum">4ms</td><td>去重率、各路占比</td></tr>
+            <tr><td>粗排</td><td>260 → 100</td><td>LR（14 个 field）或双塔内积</td><td class="tnum">12ms</td><td>Top100 的召回保持率</td></tr>
+            <tr><td>精排</td><td>100 → 50</td><td>DIN（品类序列 + attention）</td><td class="tnum">30ms</td><td>AUC、校准</td></tr>
+            <tr><td>重排</td><td>50 → 10</td><td>MMR + 作者/类目打散 + 疲劳度</td><td class="tnum">8ms</td><td>多样性、覆盖率、CTR 不掉</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout tip">
+        <p><b>为什么召回和排序要分开？</b>因为候选集规模和模型复杂度必须反向匹配。DIN 对 5000 条内容各算一次 attention，
+          单次请求要 5000 次前向，P99 直接爆掉；而双塔可以把 item 向量离线算好，线上只算一次用户向量 + ANN 检索。
+          召回负责"别漏"，排序负责"排准"，两者的优化目标、延迟预算、评估指标都不同，混在一起必然有一头做不好。</p>
+      </div>
+
+      <h2 id="recall"><span class="kicker">RETRIEVAL</span>召回层：三路互补，不是三选一</h2>
+      <p class="lead">召回的考核不是"哪个算法最强"，而是"合起来能不能把用户可能点的内容都捞进候选集"。</p>
+
+      <h3>1）三路召回的定位</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>路径</th><th>怎么算</th><th>擅长</th><th>短板</th><th>本数据 Recall@100</th></tr></thead>
+          <tbody>
+            <tr><td><b>热门召回</b></td><td>训练期点击量 Top100</td><td>覆盖大盘热点，新用户兜底</td><td>千人一面，覆盖率极低</td><td class="tnum">9.66%</td></tr>
+            <tr><td><b>ItemCF</b></td><td>用户-物品共现 → 余弦相似度 → 历史序列加权</td><td>可解释、无需训练、能挖长尾</td><td>交互稀疏时共现矩阵几乎是空的</td><td class="tnum">4.12%</td></tr>
+            <tr><td><b>双塔向量召回</b></td><td>用户塔/内容塔分别出 32 维向量，内积 + ANN</td><td>泛化好、可离线建索引、支持新内容</td><td>塔内不能交叉，表达力有上限</td><td class="tnum">11.29%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2）双塔：特征、训练、向量维度、ANN</h3>
+      <div class="grid c2">
+        <div class="card">
+          <h4>特征与结构</h4>
+          <p><b>用户塔</b>：age、gender、city_tier、active_level、interest_0、interest_1（6 个 field）。<br>
+            <b>内容塔</b>：category、duration_bucket、creator_id、publish_days、quality_score（5 个 field）。<br>
+            每个 field 24 维 embedding → 拼接 → 96 → 48 → <b>32 维</b>，L2 归一化后内积即相似度。</p>
+        </div>
+        <div class="card">
+          <h4>训练方式</h4>
+          <p>正样本 = 训练期点击；负样本 = <b>每条正样本配 6 个均匀采样负例</b>，BCE 二分类，温度系数 4（logit × 4）。
+            输出向量离线灌进 FAISS，线上只算用户向量，ANN 取 Top100。</p>
+        </div>
+      </div>
+
+      <pre><code>class Tower(nn.Module):
+    def __init__(self, n_ids, dim=32):
+        super().__init__()
+        self.emb = nn.ModuleList([nn.Embedding(n, 24) for n in n_ids])
+        self.mlp = nn.Sequential(nn.Linear(24 * len(n_ids), 96), nn.ReLU(),
+                                 nn.Linear(96, 48), nn.ReLU(), nn.Linear(48, dim))
+    def forward(self, x):
+        v = torch.cat([e(x[:, i]) for i, e in enumerate(self.emb)], 1)
+        return torch.nn.functional.normalize(self.mlp(v), dim=-1)
+
+# 1 正 + 6 均匀负例，BCE；负例均匀采样，逼模型学"匹配"而不是"热度"
+ue, ie    = u_tower(U_pair[idx]), i_tower(I_pair[idx])
+pos_logit = (ue * ie).sum(-1) * 4
+neg_emb   = i_tower(I_neg).view(len(idx), 6, -1)
+neg_logit = torch.einsum("bd,bnd-&gt;bn", ue, neg_emb) * 4
+loss = bce(pos_logit, torch.ones_like(pos_logit)) + bce(neg_logit, torch.zeros_like(neg_logit))</code></pre>
+
+      <h3>3）结果对比：Recall@100 与覆盖率</h3>
+      <div class="chart" id="c-retrieval"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方法</th><th>Recall@100</th><th>覆盖率</th><th>覆盖内容数（估）</th><th>怎么解读</th></tr></thead>
+          <tbody>
+            <tr><td>热门召回</td><td class="tnum">9.66%</td><td class="tnum">2.00%</td><td class="tnum">100 / 5000</td><td>命中率不低，但只覆盖 100 条头部内容，典型的"用集中换准确"</td></tr>
+            <tr><td>ItemCF</td><td class="tnum">4.12%</td><td class="tnum">86.92%</td><td class="tnum">4,346 / 5000</td><td>覆盖率最高，命中率最低：把长尾翻出来了，但翻得不准</td></tr>
+            <tr><td>双塔</td><td class="tnum">11.29%</td><td class="tnum">11.54%</td><td class="tnum">577 / 5000</td><td>命中率最高，覆盖率是热门的 5.8 倍，综合最优</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">口径：取测试集里有训练期历史的 3000 个用户，ground truth 是他们在测试期（后 20%）点击过的 item 集合，
+        Recall@100 = Top100 命中数 / 该用户测试期点击数，再对用户取平均。覆盖率 = 所有用户 Top100 的并集 / 5000。</p>
+
+      <div class="callout danger">
+        <p><b>反直觉结果：ItemCF 的 4.12% 低于热门的 9.66%。</b>直觉上"协同过滤"应该比"按热度排"聪明，
+          但这份数据里人均历史点击序列长度只有 <b>1.16</b>（31.8 万曝光里 4.39 万次点击，切到每条样本的历史均值只有 1.16 条），
+          用户-物品共现矩阵极其稀疏：绝大多数 item 只被一两个人点过，共现次数为 0 或 1。
+          ItemCF 的相似度基本是噪声，Top100 自然打不准。</p>
+        <p>但它不是没价值：覆盖率 <b>86.92%</b> 说明它把长尾内容挖了出来，只是"挖出来"不等于"挖得准"。
+          这正是多路召回存在的理由——<b>热门保下限、双塔保准确、ItemCF 保覆盖</b>，三路按配额融合，
+          而不是用一个离线指标选出"最好的那一路"。</p>
+      </div>
+
+      <div class="callout case">
+        <p><b>融合策略（线上真实配置）：</b>三路各取 Top100，按来源权重（双塔 1.0 / 热门 0.8 / ItemCF 0.6）与模型分归一化后合并，
+          同一 item 只保留最高分；再按"双塔 ≥ 50%、热门 ≥ 20%、ItemCF ≥ 10%"做配额兜底，防止某一路把候选集吃干。
+          融合后的真实 Recall 必须在链路里重放才能测，本文不承诺这个数字。</p>
+      </div>
+
+      <h2 id="rank"><span class="kicker">RANKING</span>排序层：从 LR 到 DIN，每一代只解决一个问题</h2>
+      <p class="lead">排序模型不是越深越好。这个项目里 LR 已经拿到 0.8473，后面三代模型总共只换来 +0.0111 AUC——
+        而这 0.0111 恰好能解释清楚"序列建模到底值不值"。</p>
+
+      <h3>1）特征清单：5 类，29 个特征</h3>
+      <p>特征全部可以从三张表 + 日志时间戳推导，来源写在表里。注意<b>没有把 item_id、user_id 直接当特征</b>：
+        5000 个 item 在 31.8 万条样本里平均只有 64 次曝光，id embedding 会严重欠训练（这个坑在 DIN 一节又踩了一次）。</p>
+      <p class="small">说明：下表是特征池。实际喂给 LR/FM/DeepFM/DIN 的是其中 14 个 field
+        （u_age、u_gender、u_city、u_active、u_int0、u_int1、i_cat、i_dur、i_creator、i_fresh、i_qual、ctx_hour、ctx_pos、x_int_cat），
+        与 <code>gen_project1.py</code> 的 <code>FIELDS</code> 一致；DIN 额外使用 <code>seq_cat</code>。
+        其余特征用于离线验证或留作后续迭代，不在这一版模型里。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类别</th><th>特征</th><th>类型</th><th>来源 / 口径</th><th>为什么加</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="7"><span class="pill">用户</span></td><td><code>u_age</code></td><td>类别（6 桶）</td><td>users.age_bucket</td><td>年龄段决定品类先验</td></tr>
+            <tr><td><code>u_gender</code></td><td>二值</td><td>users.gender</td><td>弱信号，与品类交叉后有用</td></tr>
+            <tr><td><code>u_city</code></td><td>类别（4 线级）</td><td>users.city_tier</td><td>下沉市场偏好差异</td></tr>
+            <tr><td><code>u_active</code></td><td>序数（1–5）</td><td>users.active_level</td><td>活跃度影响点击基线</td></tr>
+            <tr><td><code>u_int0</code></td><td>类别（12）</td><td>users.interest_0</td><td>主兴趣，最强先验</td></tr>
+            <tr><td><code>u_int1</code></td><td>类别（12）</td><td>users.interest_1</td><td>次兴趣，放宽召回</td></tr>
+            <tr><td><code>u_new</code></td><td>二值</td><td>users.is_new（register_days &lt; 7）</td><td>新老用户行为分布不同，需分群</td></tr>
+            <tr><td rowspan="7"><span class="pill g">内容</span></td><td><code>i_cat</code></td><td>类别（12）</td><td>items.category</td><td>与用户兴趣交叉</td></tr>
+            <tr><td><code>i_dur</code></td><td>类别（5 桶）</td><td>items.duration_bucket</td><td>时长偏好匹配</td></tr>
+            <tr><td><code>i_creator</code></td><td>类别（300）</td><td>items.creator_id</td><td>作者号召力 + 重排打散依据</td></tr>
+            <tr><td><code>i_fresh</code></td><td>类别（5 桶）</td><td>items.publish_days 分桶</td><td>时效衰减</td></tr>
+            <tr><td><code>i_qual</code></td><td>序数（Q1–Q5）</td><td>items.quality_score 分桶</td><td>质量分，避免"只看品类"</td></tr>
+            <tr><td><code>i_ctr7</code></td><td>数值（统计）</td><td>items.ctr_7d（日志回算）</td><td>强特征，但含未来信息，需注意穿越</td></tr>
+            <tr><td><code>i_finish</code></td><td>数值（统计）</td><td>items.finish_rate（日志回算）</td><td>消费深度先验</td></tr>
+            <tr><td rowspan="5"><span class="pill y">上下文</span></td><td><code>ctx_hour</code></td><td>类别（6 段）</td><td>events.hour_bucket</td><td>时段偏好</td></tr>
+            <tr><td><code>ctx_pos</code></td><td>序数（1–4）</td><td>events.position</td><td>位置偏差，训练保留、预估固定</td></tr>
+            <tr><td><code>ctx_req</code></td><td>数值</td><td>events.req_seq</td><td>当天第几次请求，用于疲劳度</td></tr>
+            <tr><td><code>ctx_gap</code></td><td>数值</td><td>本次 ts − 上次 ts（分钟）</td><td>使用间隔，反映场景切换</td></tr>
+            <tr><td><code>ctx_sess</code></td><td>数值</td><td>当日曝光条数</td><td>会话长度，长会话可推更垂直的内容</td></tr>
+            <tr><td rowspan="5"><span class="pill n">交叉</span></td><td><code>x_int_cat</code></td><td>交叉（144）</td><td>u_int0 × i_cat</td><td>把"谁喜欢什么"显式表达出来</td></tr>
+            <tr><td><code>x_age_cat</code></td><td>交叉（72）</td><td>u_age × i_cat</td><td>年龄先验，仿真里真实存在</td></tr>
+            <tr><td><code>x_dur_match</code></td><td>二值</td><td>用户时长偏好桶 == i_dur</td><td>匹配信号</td></tr>
+            <tr><td><code>x_qual_fresh</code></td><td>交叉</td><td>i_qual × i_fresh</td><td>"新且好"的内容更值得推</td></tr>
+            <tr><td><code>x_creator_cat</code></td><td>统计</td><td>作者近 7 日在该品类的 CTR</td><td>作者 × 品类粒度，缓解作者冷启动</td></tr>
+            <tr><td rowspan="5"><span class="pill r">序列</span></td><td><code>seq_cat</code></td><td>序列（长度 10）</td><td>events.hist 映射到品类 id（+1 偏移，0 为 padding）</td><td>DIN 的 attention 输入</td></tr>
+            <tr><td><code>seq_len</code></td><td>数值</td><td>hist 长度</td><td>历史越长，兴趣估计越稳</td></tr>
+            <tr><td><code>seq_same</code></td><td>数值</td><td>历史中与候选同品类的次数</td><td>短期兴趣重复度</td></tr>
+            <tr><td><code>seq_last_gap</code></td><td>数值</td><td>距上次点击的曝光条数</td><td>兴趣新鲜度</td></tr>
+            <tr><td><code>seq_finish</code></td><td>数值</td><td>历史 item 的 finish_rate 均值</td><td>用户对"完播"的偏好强度</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2）四代模型：结构与参数量级</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>关键结构</th><th>参数量级</th><th>它解决了什么</th><th>代价</th></tr></thead>
+          <tbody>
+            <tr><td><b>LR</b></td><td>14 个 field 独热（525 维），含人工交叉特征 <code>x_int_cat</code></td><td class="tnum">≈ 0.5K</td><td>可解释、稳定、校准好</td><td>交叉要人工枚举，稀疏组合学不到</td></tr>
+            <tr><td><b>FM</b></td><td>14 个 field × 16 维隐向量，二阶交叉 <code>0.5·((Σv)² − Σv²)</code></td><td class="tnum">≈ 0.24K</td><td>自动学二阶交叉，稀疏场景泛化</td><td>只到二阶，特征交互浅</td></tr>
+            <tr><td><b>DeepFM</b></td><td>FM 部分 + MLP（224 → 128 → 64 → 1）并行</td><td class="tnum">≈ 37K</td><td>低阶 + 高阶交叉，不用人工特征</td><td>容易过拟合，校准开始偏移</td></tr>
+            <tr><td><b>DIN（简化）</b></td><td>DeepFM + 品类序列 attention（48 → 32 → 1）+ 240 维 MLP 输入</td><td class="tnum">≈ 41K</td><td>让历史行为按候选内容加权，兴趣表达随候选变化</td><td>依赖序列质量；序列稀疏时几乎无效</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">参数量按"embedding + 线性层 + 偏置"估算。四个模型共用同一份训练/测试切分与同一个优化器设置（Adam 3e-3、batch 4096、6 epoch），
+        所以 AUC 差异只来自模型结构，不来自调参。</p>
+
+      <p>DIN 的核心就是那句"attention 让历史行为针对当前候选加权"。这里的实现是简化版：query 用候选的品类 embedding，
+        key/value 用历史点击的品类序列，mask 掉 padding：</p>
+      <pre><code>def forward(self, x, hist):
+    embs = [e(x[:, i]) for i, e in enumerate(self.emb)]
+    s    = torch.stack(embs, 1)                    # B x F x D
+    fm   = 0.5 * (s.sum(1) ** 2 - (s ** 2).sum(1)).sum(1)
+    out  = sum(l(x[:, i]).squeeze(1) for i, l in enumerate(self.lin)) + self.bias + fm
+
+    h    = self.item_emb(hist)                     # B x L x D，13 个品类（含 padding）
+    mask = (hist &gt; 0).float().unsqueeze(-1)
+    q    = s[:, 6]                                 # 候选的品类 embedding 作为 query
+    att_in = torch.cat([q.unsqueeze(1).expand(-1, h.size(1), -1), h,
+                        q.unsqueeze(1) * h], dim=-1)          # [q, h, q*h]
+    a    = torch.softmax(self.att(att_in).squeeze(-1)
+                         .masked_fill(mask.squeeze(-1) == 0, -1e9), dim=1)
+    ctx  = (h * a.unsqueeze(-1)).sum(1)            # 加权后的兴趣向量
+    return out + self.mlp(torch.cat([s.flatten(1), ctx], 1)).squeeze(1)</code></pre>
+
+      <h3>3）离线结果：AUC 与 LogLoss</h3>
+      <div class="chart" id="c-models"></div>
+      <p class="small"><b>这张图告诉我们：</b>四个模型的 AUC 从 0.8473 爬到 0.8584，增幅只有 1.3%（相对）；
+        而 LogLoss 从 0.2939 降到 0.2867。深度模型带来的收益是真实的，但远小于"把特征做对"带来的收益——
+        均值基线 0.5 → LR 0.8473 这一步才是主升浪。</p>
+
+      <div class="chart" id="c-curves"></div>
+      <p class="small"><b>这张图告诉我们：</b>三个模型都在 6 个 epoch 内单调变好，没有明显过拟合；
+        但 DIN 在最后一个 epoch 出现 AUC 微涨（0.8581 → 0.8584）、LogLoss 反而微升（0.2865 → 0.2867）的迹象，
+        说明已经开始记忆训练集。线上会在这里早停，而不是继续加 epoch。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>AUC</th><th>LogLoss</th><th>预估均值 pCTR</th><th>真实 CTR</th><th>偏差</th></tr></thead>
+          <tbody>
+            <tr><td>全局均值基线</td><td class="tnum">0.5000</td><td class="tnum">0.4010</td><td class="tnum">0.1383</td><td class="tnum">0.1378</td><td class="tnum">+0.4%</td></tr>
+            <tr><td>LR（独热特征）</td><td class="tnum">0.8473</td><td class="tnum">0.2939</td><td class="tnum">0.1381</td><td class="tnum">0.1378</td><td class="tnum">+0.2%</td></tr>
+            <tr><td>FM</td><td class="tnum">0.8501</td><td class="tnum">0.2913</td><td class="tnum">0.1387</td><td class="tnum">0.1378</td><td class="tnum">+0.7%</td></tr>
+            <tr><td>DeepFM</td><td class="tnum">0.8520</td><td class="tnum">0.2905</td><td class="tnum">0.1446</td><td class="tnum">0.1378</td><td class="tnum">+4.9%</td></tr>
+            <tr><td><b>DIN（简化版）</b></td><td class="tnum"><b>0.8584</b></td><td class="tnum"><b>0.2867</b></td><td class="tnum">0.1527</td><td class="tnum">0.1378</td><td class="tnum">+10.8%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>4）怎么解读这 0.0111：收益到底来自哪里</h3>
+      <div class="grid c2">
+        <div class="card accent">
+          <h4>LR → FM（+0.0028）</h4>
+          <p>FM 自动学二阶交叉，但 LR 已经有人工交叉 <code>x_int_cat</code>，所以只多出 0.0028。
+            <b>结论：人工交叉特征做得好，FM 的增益就有限。</b>这也是工业界很多场景 LR 仍然能打的原因。</p>
+        </div>
+        <div class="card teal">
+          <h4>FM → DeepFM（+0.0019）</h4>
+          <p>加了 128→64 的 MLP 学高阶交叉，只涨 0.0019，但参数从 0.24K 涨到 37K。
+            <b>结论：高阶交叉在这份数据里不是主要矛盾</b>，因为核心信号（兴趣 × 品类、质量、时效）基本是二阶的。</p>
+        </div>
+        <div class="card amber">
+          <h4>DeepFM → DIN（+0.0064）</h4>
+          <p>把"历史点了什么"按候选内容做 attention 加权，AUC 从 0.8520 到 0.8584。
+            这是四步里最大的一步，说明<b>序列里的兴趣漂移是真信号</b>；但人均序列只有 1.16 条，attention 能发挥的空间有限。</p>
+        </div>
+        <div class="card">
+          <h4>整体 +0.0111 的意义</h4>
+          <p>从 0.8473 到 0.8584，相对提升 1.3%。如果只看这个数字，很容易得出"深度模型没用"的结论。
+            正确的说法是：<b>在这份数据上，特征 > 模型深度</b>；模型的增量集中在"序列"这一维，
+            而不是"更深的 MLP"。</p>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <p><b>DeepFM 的预估均值 0.1446，比真实 CTR 0.1378 高 4.9%；DIN 更高，0.1527，高 10.8%。</b>
+          这不是"模型变差了"——AUC 和 LogLoss 都更好——而是<b>校准偏移</b>：高容量模型在正样本稀疏时，
+          对高分区的概率更自信，整体均值被拉高。排序只吃相对顺序时没影响，但一旦要做
+          <b>多目标加权（CTR × 时长）、eCPM 出价、阈值截断</b>，未校准的 pCTR 会直接把系统带偏。</p>
+        <p>处理方式：在验证集上做 isotonic regression（保序回归），或对 logit 做 Platt scaling（<code>a·logit+b</code>）。
+          本项目的校准曲线呈现明显 S 型，<b>isotonic 比单一系数缩放更合适</b>。</p>
+      </div>
+
+      <h3>5）校准曲线：预估概率 vs 真实点击率</h3>
+      <div class="chart" id="c-calib"></div>
+      <p class="small"><b>这张图告诉我们：</b>按预估概率分 10 桶后，真实 CTR 与预估并不在对角线上：
+        低分区（0.004 / 0.0112）被低估，高分区（0.2109 / 0.3505 / 0.631）被系统性高估（真实值为 0.1745 / 0.3057 / 0.5943）。
+        曲线是 S 型而不是整体平移，所以不能简单乘一个系数；要用保序回归在验证集上重新映射。</p>
+
+      <div class="callout tip">
+        <p><b>为什么排序阶段可以暂时不校准，上线又必须校准？</b>重排用的是 pCTR 的相对大小（MMR 里也是加权排序），
+          单调变换不改变顺序；但广告计费、多目标融合、频控阈值都依赖绝对值。
+          本项目在离线评估里保留未校准值是为了暴露问题，不是认为它没问题。</p>
+      </div>
+
+      <h2 id="rerank"><span class="kicker">RERANK</span>重排：精排只管"准"，重排负责"不烦人"</h2>
+      <p class="lead">精排把 100 条候选按 pCTR 排好，如果直接取 Top10，大概率是同一品类、同一个作者、甚至同一个视频的连续变体。
+        短期 CTR 可能更高，长期留存一定更差。</p>
+
+      <div class="formula">
+        MMR(d) = λ · rel(d) − (1 − λ) · max<sub>s ∈ S</sub> sim(d, s)
+        <span class="note">rel(d) 用精排 pCTR；sim 用品类/作者/内容向量的相似度；λ=0.7 表示"七分相关性、三分多样性"。</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>策略</th><th>规则 / 参数</th><th>线上可调范围</th><th>代价与风险</th></tr></thead>
+          <tbody>
+            <tr><td><b>多样性（MMR）</b></td><td>λ = 0.7，逐条贪心选，每选一条更新已选集合的相似度</td><td>0.6 – 0.85</td><td>λ 越低越多样，CTR 越低；用时长/留存兜底</td></tr>
+            <tr><td><b>类目打散</b></td><td>同一品类在任意连续 6 个坑位内最多出现 2 次</td><td>窗口 4 – 8</td><td>强打散会让"兴趣集中"的用户反感</td></tr>
+            <tr><td><b>作者打散</b></td><td>同一作者在前 10 个坑位最多 1 条，整页最多 2 条</td><td>1 – 3 条</td><td>头部作者流量下降，需要运营侧沟通</td></tr>
+            <tr><td><b>疲劳度控制</b></td><td>同一 item 24 小时内不重复；7 天内曝光 ≥ 3 次降权 ×0.5</td><td>时间窗 12 – 48h</td><td>新品曝光不足，需要配合新内容扶持</td></tr>
+            <tr><td><b>新内容扶持</b></td><td>发布 ≤ 3 天的内容保留 1 个探索坑位（约 10% 流量）</td><td>0 – 2 个坑位</td><td>短期 CTR 必掉，考核周期要拉长到 7 天</td></tr>
+            <tr><td><b>低质过滤</b></td><td>quality_score &lt; 0.20 直接不出；已完播内容降权 ×0.6</td><td>阈值 0.15 – 0.30</td><td>阈值过高会误杀小众优质内容</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <p><b>重排一定会让 CTR 掉一点，这是设计目标，不是 bug。</b>打散把"最可能被点"的内容挤出前几位，
+          短期 CTR 必然有损失；换回来的是品类覆盖、作者覆盖和 7 日留存。
+          所以重排的 A/B 必须<b>同时看 CTR、人均时长、次日留存</b>，只盯 CTR 会得出"别做重排"的错误结论。</p>
+      </div>
+
+      <div class="callout case">
+        <p><b>参数不是拍脑袋：</b>λ=0.7、窗口 6、作者 1 条这三组值都放在配置中心，按场景（首页/同城/关注）分别下发，
+          支持 5 分钟内热更新。任何一次调整都走 A/B，实验组至少跑 7 天，避开周末效应。</p>
+      </div>
+
+      <h2 id="serving"><span class="kicker">SERVING</span>线上部署：P99 120ms 是怎么花掉的</h2>
+      <p class="lead">离线指标再漂亮，服务扛不住就是零。这一节把延迟、缓存、降级、热更新、监控全部写成可执行的配置。</p>
+
+      <h3>1）接口定义</h3>
+      <p>同步 HTTP 接口，一次请求返回一屏 10 条。<code>request_id</code> 贯穿日志，方便排查"为什么给我推这个"。</p>
+      <pre><code>POST /api/v1/feed/recommend
+{
+  "user_id": 1118,
+  "request_id": "req_20261113_201500_1118",
+  "scene": "home_feed",
+  "page_size": 10,
+  "context": {"ts": "2026-11-13T20:15:00+08:00", "hour_bucket": 4, "network": "wifi"}
+}
+
+200 OK
+{
+  "request_id": "req_20261113_201500_1118",
+  "items": [
+    {"item_id": 1761, "pctr": 0.184, "rank": 1,
+     "recall_src": ["two_tower", "hot"], "reason": "品类:美食"}
+  ],
+  "debug": {"recall_cnt": 261, "after_rerank": 10,
+            "latency_ms": 87, "model_version": "din_v3"},
+  "fallback": false
+}</code></pre>
+      <p class="small"><code>recall_src</code> 用于分析"哪一路召回贡献了最终曝光"，<code>reason</code> 用于前端展示和人工排查，
+        <code>fallback</code> 用于监控降级率。这三个字段上线后天天有人查，别省。</p>
+
+      <h3>2）延迟预算：P99 ≤ 120ms</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>阶段</th><th>做什么</th><th>P99 预算</th><th>并行 / 串行</th><th>超时动作</th></tr></thead>
+          <tbody>
+            <tr><td>接入层</td><td>鉴权、参数校验、限流</td><td class="tnum">3ms</td><td>串行</td><td>直接 429</td></tr>
+            <tr><td>特征服务</td><td>画像、item 特征、序列拼接</td><td class="tnum">8ms</td><td>串行（后续依赖）</td><td>用 5 分钟前的快照</td></tr>
+            <tr><td>三路召回</td><td>热门 / ItemCF / 双塔 ANN</td><td class="tnum">25ms</td><td><b>并行</b></td><td>单路超时则丢弃该路</td></tr>
+            <tr><td>合并去重</td><td>归一化、去重、配额</td><td class="tnum">4ms</td><td>串行</td><td>降级为简单截断</td></tr>
+            <tr><td>粗排</td><td>LR / 双塔内积，260 → 100</td><td class="tnum">12ms</td><td>串行</td><td>跳粗排，直接精排 Top100</td></tr>
+            <tr><td>精排</td><td>DIN 前向，100 → 50</td><td class="tnum">30ms</td><td>串行</td><td>用粗排分代替</td></tr>
+            <tr><td>重排</td><td>MMR + 打散 + 疲劳度</td><td class="tnum">8ms</td><td>串行</td><td>跳过打散，保序输出</td></tr>
+            <tr><td>拼装 / 序列化</td><td>补全标题、封面、埋点字段</td><td class="tnum">6ms</td><td>串行</td><td>返回已有字段</td></tr>
+            <tr><td>网络回传</td><td>服务端 → 客户端</td><td class="tnum">10ms</td><td>—</td><td>—</td></tr>
+            <tr><td><b>余量</b></td><td>抖动、GC、慢查询</td><td class="tnum"><b>14ms</b></td><td>—</td><td>—</td></tr>
+            <tr><td><b>合计</b></td><td></td><td class="tnum"><b>120ms</b></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">预算的用法：线上告警阈值设在 100ms（留 20ms 缓冲），超过 120ms 直接触发降级。
+        三路召回必须并行——串行的话 25ms 会变成 60ms 以上，这是最常见的架构错误。</p>
+
+      <h3>3）缓存、降级、热更新</h3>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>缓存</h4>
+          <p><b>item 向量 + ANN 索引</b>：全量常驻内存，30 分钟增量重建。<br>
+            <b>热门榜</b>：Redis，TTL 60s。<br>
+            <b>用户画像</b>：Redis，TTL 10min，写时更新。<br>
+            <b>用户序列</b>：实时拼接最近 10 次点击，TTL 1min。</p>
+        </div>
+        <div class="card teal">
+          <h4>降级（按顺序）</h4>
+          <p>1. 双塔超时 → 热门 + ItemCF 顶上。<br>
+            2. 精排超时 → 粗排分直接进重排。<br>
+            3. 特征服务超时 → 用上一版快照，最长 5 分钟。<br>
+            4. 全链路异常 → 热门 Top10，<code>fallback=true</code>。</p>
+        </div>
+        <div class="card amber">
+          <h4>模型热更新</h4>
+          <p>模型文件双 buffer 加载，新版本先在 5% 流量灰度；<br>
+            校验项：AUC 回放不低于基线、pCTR 均值漂移 &lt; 15%、P99 不劣化；<br>
+            任一不达标自动回滚到上一版本。</p>
+        </div>
+      </div>
+
+      <h3>4）监控指标</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th>采集粒度</th><th>告警阈值</th><th>先看什么</th></tr></thead>
+          <tbody>
+            <tr><td>接口 P99 延迟</td><td>1min</td><td>&gt; 100ms 预警，&gt; 120ms 降级</td><td>哪一路召回变慢、特征服务是否慢查询</td></tr>
+            <tr><td>降级率</td><td>1min</td><td>&gt; 1%</td><td>降级原因分布（超时 / 异常）</td></tr>
+            <tr><td>各召回路占比</td><td>5min</td><td>单路 &lt; 5% 或 &gt; 70%</td><td>ANN 索引是否失效、配额是否被吃干</td></tr>
+            <tr><td>pCTR 均值</td><td>5min</td><td>相对基线 ±15%</td><td>模型版本、特征缺失率</td></tr>
+            <tr><td>实际 CTR</td><td>1h</td><td>同比跌 &gt; 5%</td><td>曝光位置分布、客户端埋点</td></tr>
+            <tr><td>特征缺失率</td><td>5min</td><td>&gt; 1%</td><td>上游画像表、Kafka 堆积</td></tr>
+            <tr><td>空结果率 / 覆盖率</td><td>1h / 1d</td><td>空结果 &gt; 0.5%，覆盖率周环比跌 &gt; 20%</td><td>召回池是否收缩、重排是否过严</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>5）服务端伪代码</h3>
+      <pre><code>async def recommend(uid, ctx):
+    user, hist = await asyncio.gather(load_profile(uid), load_sequence(uid, 10))
+
+    # 三路召回并行，任何一路超过 25ms 直接取消，不影响主链路
+    bags = await asyncio.gather(hot_top100(), itemcf(hist),
+                                two_tower_ann(user), return_exceptions=True)
+    cands = merge_and_dedup(bags, weights={"tt": 1.0, "hot": 0.8, "cf": 0.6})
+
+    coarse = topk([lr_score(c, user, ctx) for c in cands], 100)
+    ranked = topk(din_score(coarse, hist, user, ctx), 50)      # batch 前向，一次 50 条
+
+    final = mmr(ranked, lam=0.7, cat_window=6, author_cap=1,
+                fatigue_window_h=24, explore_slots=1)
+    return final[:10]</code></pre>
+
+      <h2 id="result"><span class="kicker">RESULT</span>效果与复盘：把"涨了多少"和"为什么涨"分开说</h2>
+      <p class="lead">离线指标是过程，业务指标是结果。这一节先给离线汇总，再给一个<b>明确标注为模拟</b>的 A/B，
+        最后把踩过的坑按时间线摊开——面试官更信"你怎么错的"，而不是"你多厉害"。</p>
+
+      <h3>1）离线结果汇总</h3>
+      <div class="kpi">
+        <div class="item"><div class="v tnum">0.8584</div><div class="l">精排 AUC（DIN）</div></div>
+        <div class="item"><div class="v tnum">0.2867</div><div class="l">LogLoss（DIN）</div></div>
+        <div class="item"><div class="v tnum">11.29<small>%</small></div><div class="l">双塔 Recall@100</div></div>
+        <div class="item"><div class="v tnum">11.54<small>%</small></div><div class="l">双塔覆盖率</div></div>
+        <div class="item"><div class="v tnum">86.92<small>%</small></div><div class="l">ItemCF 覆盖率（长尾）</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>环节</th><th>改造前</th><th>改造后</th><th>变化</th><th>可信度</th></tr></thead>
+          <tbody>
+            <tr><td>排序能力</td><td>热门榜（无个性化）</td><td>DIN，AUC 0.8584</td><td>+0.0111 vs LR</td><td>离线可复现</td></tr>
+            <tr><td>召回命中</td><td>热门 9.66%</td><td>双塔 11.29%</td><td>+1.63pp</td><td>离线可复现</td></tr>
+            <tr><td>内容覆盖</td><td>2.00%</td><td>11.54%（双塔）/ 86.92%（ItemCF）</td><td>5.8× / 43×</td><td>离线可复现</td></tr>
+            <tr><td>预估偏差</td><td>均值基线 +0.4%</td><td>DIN +10.8%</td><td>变差</td><td>需上线前校准</td></tr>
+            <tr><td>CTR / 时长 / 留存</td><td>热门排序</td><td>全链路</td><td>见下方模拟</td><td><b>模拟，非真实线上</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2）线上 A/B：这是模拟，不是真实实验</h3>
+      <p>我没有真实流量，所以这里做的是<b>基于离线测试集的回放模拟</b>：用 63,573 条测试曝光（317,866 × 20%），
+        对照组按热门分排序，实验组按 DIN 预估分排序后过重排，再按观测到的位置 CTR 折算点击。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>组别</th><th>排序策略</th><th>CTR</th><th>人均有效播放时长（指数）</th><th>次日留存</th></tr></thead>
+          <tbody>
+            <tr><td>对照组</td><td>热门排序</td><td class="tnum">13.78%</td><td class="tnum">100.0</td><td class="tnum">31.2%</td></tr>
+            <tr><td>实验组</td><td>三路召回 + DIN + 重排</td><td class="tnum">14.94%</td><td class="tnum">105.6</td><td class="tnum">32.5%</td></tr>
+            <tr><td><b>相对变化</b></td><td></td><td class="tnum"><b>+8.4%</b></td><td class="tnum"><b>+5.6%</b></td><td class="tnum"><b>+1.3pp</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">13.78% 是这份数据真实的测试集 CTR（对应 <code>metrics.models[].ctr_true</code>），不是模拟出来的；
+        实验组 14.94%、时长 105.6、留存 32.5% 均为模拟值。</p>
+
+      <div class="callout danger">
+        <p><b>模拟假设，必须说清楚（否则就是编数据）：</b></p>
+        <p>① 曝光总量固定为 63,573 条，只改变排序，不模拟"内容更好→用户使用更久→请求变多"的反馈回路。<br>
+          ② 位置偏差沿用观测到的 <code>position_ctr</code>（15.28% / 14.14% / 13.26% / 12.59%），并假设实验组的位置与 pCTR 单调一致。<br>
+          ③ 次日留存字段在数据里不存在。31.2% 是我设定的仿真基线，+1.3pp 是假设值，只能用来演示"怎么讲"，不能当结论。<br>
+          ④ 未做显著性检验。真实 A/B 至少要跑 7 天，用双样本 t 检验或 bootstrap 给置信区间；这里的数字不是抽样估计，没有置信区间可言。<br>
+          ⑤ 没有季节、活动、竞品、客户端改版等外部变量。</p>
+      </div>
+
+      <p><b>为什么 CTR 能涨 8.4%？</b>拆开看是三件事叠加：召回把候选覆盖率从 2% 拉到 11.54%，让"可能被点但热门榜里没有"的内容进入候选；
+        排序 AUC 提升让候选内部的顺序更合理；重排会主动牺牲一部分 CTR 换多样性，所以最终净增益小于"纯按 pCTR 排"。
+        这个拆解是方向性的，具体贡献比例需要在线做分流实验才能定。</p>
+
+      <h3>3）失败与迭代记录</h3>
+      <div class="timeline">
+        <div class="node">
+          <span class="yr">ITERATION 01</span>
+          <b>随机切分，指标虚高</b>
+          <p>第一版直接 <code>train_test_split</code>，AUC 好看得不正常。排查发现：同一用户相邻曝光高度相关，
+            而且 <code>ctr_7d</code>、<code>hist</code> 都来自全期日志，测试集的"未来"漏进了训练集。
+            改成用户内部时间切分后，LR 落到 0.8473——这才是可信口径。<b>教训：切分方式决定指标上限，先定口径再调模型。</b></p>
+        </div>
+        <div class="node">
+          <span class="yr">ITERATION 02</span>
+          <b>DIN 用 item_id 序列，embedding 欠训练</b>
+          <p>最初把 <code>hist</code> 里的 item_id 直接喂进 DIN 的 attention。5000 个 item 分摊到 4.39 万次点击，
+            长尾 item 只有个位数样本，embedding 基本是随机初始化，AUC 没有超过 DeepFM 的 0.8520，序列分支等于白加。
+            换成 <b>13 维品类序列</b>（12 品类 + padding）后，每个品类有上千条样本，AUC 才到 0.8584。
+            <b>教训：序列建模的前提是序列 token 有足够样本，粒度要按数据量选。</b></p>
+        </div>
+        <div class="node">
+          <span class="yr">ITERATION 03</span>
+          <b>双塔用 in-batch softmax，Recall 只有 3.8%</b>
+          <p>一开始照搬"batch 内其他样本当负例"的做法，但一份 batch 只有 2048 个正样本，
+            在小数据上负例太少且分布偏，模型学不出区分度，Recall@100 只有 3.8%。
+            改成 <b>1 正 + 6 均匀负采样 + BCE</b> 后升到 11.29%。
+            <b>教训：in-batch softmax 依赖大 batch 和大数据，冷启动阶段老老实实做负采样更稳。</b></p>
+        </div>
+        <div class="node">
+          <span class="yr">ITERATION 04</span>
+          <b>位置特征直接进模型，离线涨、线上不可用</b>
+          <p>把 <code>ctx_pos</code> 当普通特征，离线 AUC 涨了一点，但线上排序会改变位置分布，
+            模型学到的"第 1 位更容易点"在推理时自相矛盾。改成：<b>训练时保留 position 作为偏置项，
+            预估时固定为基准位（第 1 位）</b>，把位置效应从"内容分"里剥离出来；更严格的做法是加一个 position bias 塔做 debias。</p>
+        </div>
+        <div class="node">
+          <span class="yr">ITERATION 05</span>
+          <b>DeepFM 预估整体偏高，校准没做</b>
+          <p>DeepFM 的 pCTR 均值 0.1446，真实 CTR 0.1378，高 4.9%；DIN 高 10.8%。AUC 和 LogLoss 都更好，
+            但绝对值不能直接用于多目标加权。处理：在验证集上拟合 isotonic regression，上线前必须过校准检查。</p>
+        </div>
+      </div>
+
+      <div class="callout tip">
+        <p><b>复盘一句话：</b>这个项目里真正有效的三件事是——把切分口径做对、把品类序列的粒度选对、把多路召回的互补性讲清楚。
+          无效的三件事是——把 MLP 加深、把 epoch 加多、把 item_id embedding 加大。前者是判断，后者是堆料。</p>
+      </div>
+
+      <h2 id="gap"><span class="kicker">GAP</span>如果真实上线，还差什么</h2>
+      <p class="lead">这部分是"诚实清单"。不写"已完成 100%"，写清楚哪些是仿真里能验证的、哪些必须到真实系统里补。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>缺口</th><th>现在做到哪</th><th>真实上线要补什么</th><th>难度</th></tr></thead>
+          <tbody>
+            <tr><td><b>实时特征</b></td><td>全部离线批算，用户序列来自历史日志</td><td>Flink 实时窗口（近 1h 点击、实时热度、在线时长）；特征存储 + 线上线下一致性校验（同一份特征定义只写一次）</td><td><span class="pill y">高</span></td></tr>
+            <tr><td><b>在线学习</b></td><td>T+1 全量重训，手动发布</td><td>小时级增量训练 / FTRL 在线学习；模型热更新与灰度回滚；pCTR 漂移监控</td><td><span class="pill y">高</span></td></tr>
+            <tr><td><b>内容理解</b></td><td>只有品类、时长、作者、质量分</td><td>标题/ASR/OCR/封面多模态 embedding；细粒度标签体系；内容去重与相似内容聚类</td><td><span class="pill y">高</span></td></tr>
+            <tr><td><b>审核与生态</b></td><td>只按 <code>quality_score &lt; 0.2</code> 过滤</td><td>合规审核、低质/标题党识别、创作者生态指标（新作者曝光占比、内容多样性）</td><td><span class="pill r">很高</span></td></tr>
+            <tr><td><b>多目标融合</b></td><td>只优化点击，完播/点赞仅作评估</td><td>MMoE / PLE 多任务（CTR、完播、时长、点赞）；时长回归 + 加权融合；解决任务冲突</td><td><span class="pill y">高</span></td></tr>
+            <tr><td><b>因果与纠偏</b></td><td>位置偏差只做了"固定基准位"</td><td>IPS / DR 估计、propensity 日志、无偏离线评估；解决"训练分布 ≠ 线上分布"</td><td><span class="pill r">很高</span></td></tr>
+            <tr><td><b>冷启动与实验</b></td><td>新用户走热门，新内容 10% 探索坑位；无 A/B 平台</td><td>bandit 探索、侧信息补全；分流平台、显著性检验、护栏指标与归因</td><td><span class="pill y">高</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>一句实话：</b>这个项目能证明"我理解推荐系统的全链路，能写出可复现的代码，能解释每个指标的来源和局限"，
+          但不能证明"我扛过真实线上流量"。前者是校招/初级岗的核心考察点，后者需要真实业务环境。面试时主动划清这条线，比硬吹更加分。</p>
+      </div>
+
+      <h2 id="qa"><span class="kicker">INTERVIEW</span>面试拷问：8 个最容易被追问的点</h2>
+      <p class="lead">答案不是背的，是上面每一节压缩成 30 秒能讲完的版本。建议先自己答一遍，再展开看。</p>
+
+      <details class="qa">
+        <summary>为什么召回和排序要分开？直接用 DIN 对全库打分不行吗？</summary>
+        <div class="ans">
+          <p>三个原因：<b>算力、目标、可维护性</b>。算力上，5000 条内容每条都跑一次 DIN 前向，单请求就是 5000 次，
+            而召回层用双塔可以离线把 item 向量算好，线上只算一次用户向量 + ANN 检索，P99 25ms 内完成；
+            精排只对 100 条候选做，P99 30ms。目标上，召回优化"别漏"（Recall@100、覆盖率），排序优化"排准"（AUC、校准），
+            两者指标不同，混在一起会互相拖累。可维护性上，召回可以多路并行、单路降级，排序挂了还能用粗排分兜底。</p>
+          <p>如果强行全库精排，延迟会直接超出 120ms 预算，而且没必要——召回已经能把命中率做到 11.29%（双塔），
+            剩下的是排序问题。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>双塔为什么不能做特征交叉？它的表达上限在哪？</summary>
+        <div class="ans">
+          <p>因为双塔必须<b>解耦</b>：item 向量要离线预计算并建 ANN 索引，才能在线快速检索。一旦用户塔和内容塔之间做交叉
+            （比如把 user_id 和 item_id 拼起来过 MLP），item 向量就依赖具体用户，无法预计算，双塔就退化成了精排，
+            失去"离线建索引"的全部优势。</p>
+          <p>代价是：用户和内容只能在最后一层做内积，交叉是隐式的。比如"25 岁男性喜欢汽车"这个三元关系，
+            双塔只能靠两侧 embedding 的内积近似表达，表达力不如 DIN 里的显式交叉。所以工业界的标准做法是
+            <b>双塔负责召回（宽而快），精排负责交叉（窄而准）</b>。本项目的实测也印证了这一点：
+            双塔 Recall@100 11.29%，但 AUC 无法和 DIN 比。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>负样本怎么选？为什么不用全部未点击曝光？</summary>
+        <div class="ans">
+          <p>要分场景。精排的点击模型用<b>曝光未点击</b>做负样本，因为这最接近线上分布：模型要回答的是"这一屏里用户会点哪个"。
+            本项目 317,866 条曝光、43,933 次点击，负样本 273,933 条，正负比约 1:6.2，直接用全部未点击曝光。</p>
+          <p>召回的双塔不能用全部曝光——那会让训练被"热门但用户没兴趣"的样本淹没，而且样本量太大。所以用
+            <b>1 正 + 6 均匀负采样 + BCE</b>。均匀采样会高估"冷门内容"的概率，严格做法要加 propensity 校正
+            （把采样概率除回去）。</p>
+          <p><b>绝对不能用"未曝光"当负样本</b>：没被推荐不等于不喜欢，那是缺失数据，不是负反馈。用了就会把
+            样本选择偏差固化成模型偏见，热门内容越推越准、长尾永远出不来。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>离线 AUC 涨了，线上 CTR 不涨，你怎么排查？</summary>
+        <div class="ans">
+          <p>按这个顺序查，从便宜到贵：</p>
+          <p><b>① 口径</b>：切分有没有穿越？<code>ctr_7d</code>、<code>hist</code> 是不是用了全期数据？
+            正负样本定义有没有变？这是最常见的，本项目第一版就栽在这。<br>
+            <b>② 评估目标错位</b>：AUC 看全体曝光，线上只看 Top10。要单独算 Top10 的指标，或者用 NDCG@10。<br>
+            <b>③ 位置偏差</b>：离线样本里的位置分布和线上一不一样？训练用了 <code>ctx_pos</code>，线上位置变了，预估就偏。<br>
+            <b>④ 特征一致性</b>：线上特征是不是缺失/延迟/口径不同？看特征缺失率和分布漂移。<br>
+            <b>⑤ 召回瓶颈</b>：排序再好，候选集里没有用户想点的内容也白搭。看召回覆盖率和各路占比。<br>
+            <b>⑥ 重排/规则抵消</b>：打散、疲劳度、低质过滤可能把模型选出的内容干掉了。<br>
+            <b>⑦ 实验本身</b>：分流是否干净、样本量够不够、有没有新奇效应。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>冷启动怎么办？新用户和新内容分别怎么处理？</summary>
+        <div class="ans">
+          <p><b>新用户</b>：数据里新用户 CTR 14.68%，反而高于老用户 13.82%，说明"点得动"不是问题，"点完不满意"才是。
+            所以策略不是多给曝光，而是快速试探：热门兜底保证下限 + 品类多样性保证探索 + 用注册侧信息（年龄、城市）
+            做粗粒度先验 + 前几次曝光按 ε-greedy 主动探索兴趣。本项目受限于数据，只做到"热门 + 兴趣先验"。</p>
+          <p><b>新内容</b>：双塔的内容塔只使用内容侧特征（品类、时长、作者、新鲜度、质量分），
+            所以新 item 一入库就能算出向量、进入 ANN 索引——这是双塔相对 ItemCF 的关键优势（ItemCF 需要交互才能算相似度）。
+            再配合重排里 1 个探索坑位（约 10% 流量）和作者历史 CTR 做冷启动加权。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>位置偏差怎么处理？你们的做法有什么局限？</summary>
+        <div class="ans">
+          <p>数据里首位 CTR 15.28%、末位 12.59%，差 21.4%，这就是位置偏差。三种处理：
+            <b>① 训练保留、预估固定基准位</b>（本项目做法）：把 position 当偏置特征，推理时统一置为第 1 位，
+            保证不同候选在同一基准下比较；<b>② IPS 加权</b>：用 1/propensity 给样本加权，需要记录曝光策略的倾向分；
+            <b>③ position bias 塔</b>：把 p(click) 拆成 p(examined|pos) × p(click|examined)，分别建模。</p>
+          <p>局限：① 只能消除"固定位置效应"，消不掉"位置 × 内容"的交互（好内容放第 4 位也可能被点）；
+            ② 本项目没有 propensity 日志，做不了严格的 IPS；③ 离线评估仍然是在有偏日志上算的，
+            所以 AUC 只能做模型间的相对比较，不能当线上绝对水平。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>DIN 的 attention 到底有什么用？和 DeepFM 的本质区别是什么？</summary>
+        <div class="ans">
+          <p>DeepFM 对历史行为是<b>固定聚合</b>（sum / concat / mean），不管当前候选是什么，用户表示都一样。
+            DIN 用<b>当前候选做 query</b>，对历史行为加权：候选是"美食"，历史里的"美食"点击权重就高，
+            "汽车"权重就低。本质是让用户表示随候选变化，而不是一人一个固定向量。</p>
+          <p>本项目的实现是简化版：<code>att_in = [q, h, q*h]</code> 过一个小 MLP 出分数，softmax 时 mask 掉 padding，
+            加权求和得到兴趣向量，再和 14 个 field 的 embedding 拼起来进 MLP。</p>
+          <p>效果：DeepFM 0.8520 → DIN 0.8584，+0.0064。增益不大，因为人均序列只有 1.16 条，
+            attention 没有多少历史可加权。如果序列长度到 20+，这个增益会明显放大——这也是为什么工业界要
+            做长期行为序列。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>这个项目最大的不足是什么？</summary>
+        <div class="ans">
+          <p><b>最大的不足是"单目标与北极星不一致"。</b>我优化的是点击率，但业务目标是人均有效播放时长。
+            CTR 高的内容不一定看得久，数据里也能看到：点击后只有 57.3% 完播。正确做法是多任务
+            （CTR + 完播 + 时长回归）加权融合，而不是单目标 CTR 排序。</p>
+          <p>第二是<b>数据是仿真的</b>：没有真实的反事实、没有线上曝光策略变化、没有噪声和异常，
+            所以离线指标只能证明"方法有效"，不能证明"线上能涨"。第三是 A/B 是模拟的，没有显著性检验。
+            第四是召回融合没有做端到端重放，融合后的真实 Recall 没有测。</p>
+          <p>我把这些写在页面上而不是藏起来，是因为面试官一定会问"你觉得哪里不够"——
+            能准确说出边界，比多报 2 个点更可信。</p>
+        </div>
+      </details>
+
+      <div class="callout tip">
+        <p><b>三分钟讲法（STAR）：</b>背景是热门榜导致新用户留不住、老用户消费浅、长尾没曝光；
+          任务是把首页升级成个性化，目标 CTR +8%、时长 +5%；行动是仿真 31.8 万条日志 → 三路召回（双塔 Recall@100 11.29%）
+          → LR/FM/DeepFM/DIN 四代排序（AUC 0.8473 → 0.8584）→ MMR 重排 → 120ms 延迟预算与降级方案；
+          结果离线指标可复现，模拟 A/B 显示 CTR +8.4%、时长 +5.6%，并明确标注这是模拟、留存数字是假设。
+          最后补一句最大的不足：单目标 CTR 与北极星时长不一致，下一步做多任务融合。</p>
+      </div>
+
+      <div class="pager">
+        <a href="system.html"><span>上一篇</span><b>03 · 系统工程与踩坑手册</b></a>
+        <a class="next" href="project-2.html"><span>下一篇</span><b>项目二 · 政务「政策找人」平台 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/charts.js"></script>
+<script>
+(function () {
+  const D = {
+    cat: [
+      { name: "搞笑", rate: 0.2507, expo: 40419 }, { name: "美食", rate: 0.2176, expo: 32182 },
+      { name: "游戏", rate: 0.1677, expo: 36509 }, { name: "汽车", rate: 0.1510, expo: 12093 },
+      { name: "影视", rate: 0.1284, expo: 33706 }, { name: "教育", rate: 0.1270, expo: 15650 },
+      { name: "音乐", rate: 0.1078, expo: 26671 }, { name: "美妆", rate: 0.1028, expo: 27650 },
+      { name: "健身", rate: 0.0823, expo: 19664 }, { name: "科技", rate: 0.0750, expo: 25678 },
+      { name: "萌宠", rate: 0.0686, expo: 32802 }, { name: "旅行", rate: 0.0686, expo: 14842 }
+    ],
+    pos: [
+      { name: "第1位", rate: 0.1528, n: 79559 }, { name: "第2位", rate: 0.1414, n: 79757 },
+      { name: "第3位", rate: 0.1326, n: 79269 }, { name: "第4位", rate: 0.1259, n: 79281 }
+    ],
+    funnel: [
+      { name: "曝光", value: 317866 }, { name: "点击", value: 43933 },
+      { name: "完播", value: 25174 }, { name: "点赞", value: 5555 }
+    ],
+    tail: [
+      { name: "头部 1%", share: 0.0315 }, { name: "头部 5%", share: 0.1242 },
+      { name: "头部 10%", share: 0.2165 }, { name: "头部 20%", share: 0.3680 },
+      { name: "头部 50%", share: 0.6995 }
+    ],
+    dur: [
+      { name: "0-15s", n: 732 }, { name: "15-30s", n: 1782 }, { name: "30-60s", n: 1734 },
+      { name: "1-3min", n: 666 }, { name: "3min+", n: 86 }
+    ],
+    retrieval: [
+      { name: "热门召回", recall: 0.0966, coverage: 0.0200 },
+      { name: "ItemCF", recall: 0.0412, coverage: 0.8692 },
+      { name: "双塔向量召回", recall: 0.1129, coverage: 0.1154 }
+    ],
+    models: [
+      { name: "均值基线", auc: 0.5000, logloss: 0.4010 },
+      { name: "LR", auc: 0.8473, logloss: 0.2939 },
+      { name: "FM", auc: 0.8501, logloss: 0.2913 },
+      { name: "DeepFM", auc: 0.8520, logloss: 0.2905 },
+      { name: "DIN", auc: 0.8584, logloss: 0.2867 }
+    ],
+    curves: [
+      { epoch: 1, FM: 0.8387, DeepFM: 0.8466, DIN: 0.8507 },
+      { epoch: 2, FM: 0.8469, DeepFM: 0.8484, DIN: 0.8533 },
+      { epoch: 3, FM: 0.8484, DeepFM: 0.8499, DIN: 0.8550 },
+      { epoch: 4, FM: 0.8493, DeepFM: 0.8508, DIN: 0.8571 },
+      { epoch: 5, FM: 0.8496, DeepFM: 0.8514, DIN: 0.8581 },
+      { epoch: 6, FM: 0.8501, DeepFM: 0.8520, DIN: 0.8584 }
+    ],
+    calib: [
+      { x: 0.0040, y: 0.0050, label: "n=5558" }, { x: 0.0112, y: 0.0133, label: "n=5558" },
+      { x: 0.0208, y: 0.0221, label: "n=5558" }, { x: 0.0338, y: 0.0347, label: "n=5558" },
+      { x: 0.0524, y: 0.0459, label: "n=5557" }, { x: 0.0818, y: 0.0700, label: "n=5558" },
+      { x: 0.1307, y: 0.1126, label: "n=5558" }, { x: 0.2109, y: 0.1745, label: "n=5558" },
+      { x: 0.3505, y: 0.3057, label: "n=5558" }, { x: 0.6310, y: 0.5943, label: "n=5558" }
+    ]
+  };
+
+  Chart.bar("#c-cat", D.cat, {
+    horizontal: true, valueKey: "rate", format: "pct", max: 0.30, height: 400,
+    caption: "<b>图 1 · 品类 CTR</b>　12 个品类的点击率，横条长度即 CTR（悬停可见曝光量 expo）"
+  });
+
+  Chart.bar("#c-pos", D.pos, {
+    valueKey: "rate", format: "pct", max: 0.16, height: 290,
+    caption: "<b>图 2 · 位置偏差</b>　同一批内容在不同展示位上的 CTR（样本量各约 7.9 万）"
+  });
+
+  Chart.funnel("#c-funnel", D.funnel, {
+    height: 250,
+    caption: "<b>图 3 · 曝光漏斗</b>　曝光 → 点击 → 完播 → 点赞，右侧为相对曝光的留存比例"
+  });
+
+  Chart.bars("#c-tail", D.tail, {
+    valueKey: "share", format: "pct", max: 0.80, height: 40 + 5 * 34,
+    caption: "<b>图 4 · 曝光长尾</b>　按曝光量降序，头部 X% 的内容拿走的曝光占比"
+  });
+
+  Chart.donut("#c-dur", D.dur, {
+    valueKey: "n", format: "int", height: 320, centerLabel: "视频数", centerFormat: "int",
+    caption: "<b>图 5 · 内容时长分布</b>　5000 条视频按 duration_bucket 统计"
+  });
+
+  Chart.groupBar("#c-retrieval", D.retrieval, {
+    keys: [{ key: "recall", label: "Recall@100", color: "#4f46e5" },
+           { key: "coverage", label: "覆盖率", color: "#0d9488" }],
+    format: "pct", max: 1.0, height: 320,
+    caption: "<b>图 6 · 召回对比</b>　命中率与覆盖率的取舍：热门集中、ItemCF 广而浅、双塔较均衡"
+  });
+
+  Chart.groupBar("#c-models", D.models, {
+    keys: [{ key: "auc", label: "AUC", color: "#4f46e5" },
+           { key: "logloss", label: "LogLoss", color: "#f59e0b" }],
+    format: "float", max: 1.0, height: 320,
+    caption: "<b>图 7 · 排序模型对比</b>　AUC 越高越好、LogLoss 越低越好；两者共用坐标轴，LogLoss 的柱子天然更矮"
+  });
+
+  Chart.line("#c-curves", D.curves, {
+    xKey: "epoch", min: 0.835, max: 0.862, height: 320,
+    keys: [{ key: "FM", label: "FM", color: "#f59e0b" },
+           { key: "DeepFM", label: "DeepFM", color: "#3b82f6" },
+           { key: "DIN", label: "DIN（简化版）", color: "#4f46e5" }],
+    caption: "<b>图 8 · 训练曲线（测试集 AUC）</b>　6 个 epoch，DIN 全程领先，末轮出现轻微过拟合迹象"
+  });
+
+  Chart.scatter("#c-calib", D.calib, {
+    xmin: 0, xmax: 0.65, ymin: 0, ymax: 0.65, height: 340, color: "#4f46e5",
+    note: "横轴：DIN 预估 pCTR　纵轴：分桶真实 CTR　虚线：完美校准 y = x",
+    caption: "<b>图 9 · 校准曲线（DIN）</b>　10 个等频分桶，每桶约 5558 条测试样本"
+  });
+})();
+</script>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

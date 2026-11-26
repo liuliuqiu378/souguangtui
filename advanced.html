@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拓展 T2：进阶模型专题 · 搜广推：从 0 到能干活</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="advanced" data-title="拓展 T2：进阶模型专题">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <section class="hero">
+        <h1>进阶模型专题：把工业界这五年的主线，拆成一本"补窟窿的账本"</h1>
+        <p>第 02 章讲了能干活的那一层：ItemCF、双塔、LR → FM → DeepFM → DIN、粗排精排重排。
+          这一页往下再挖一层——序列、图、多目标、生成式、LLM、Bandit、冷启、压缩。
+          每个模型只回答四个问题：<b>补什么窟窿、结构长什么样、代价多少、什么时候不该用</b>。
+          答不出第四个，说明只是背过结构图。</p>
+        <div class="tags">
+          <span>拓展 T2</span><span>9 个专题</span><span>序列 · 图 · 多目标</span>
+          <span>生成式与 LLM4Rec</span><span>10 道自测</span>
+        </div>
+      </section>
+
+      <div class="callout">
+        <p><b>阅读前提。</b>你已经知道召回/粗排/精排/重排为什么要分层，知道 DIN 的 query-key-value 分别是什么，
+          也知道 AUC 涨了线上不一定涨。这一页不再重复这些基础，只讲<b>每一代的增量与代价</b>。</p>
+        <p><b>数字纪律。</b>凡标注"项目一"的数字，全部来自 <code>data/p1_metrics.json</code>；
+          凡涉及论文或工业界规模的数字，一律标注<b>公开资料口径</b>或<b>经验值</b>，不编造精确指标。</p>
+      </div>
+
+      <div class="kpi">
+        <div class="item"><div class="v">20,000</div><div class="l">用户数（项目一）</div></div>
+        <div class="item"><div class="v">5,000</div><div class="l">视频数（项目一）</div></div>
+        <div class="item"><div class="v">317,866</div><div class="l">曝光日志条数</div></div>
+        <div class="item"><div class="v">43,933</div><div class="l">点击数，CTR 13.82%</div></div>
+        <div class="item"><div class="v">1.16</div><div class="l">人均点击序列长度</div></div>
+      </div>
+
+      <div class="toc">
+        <b>本页目录</b>
+        <ol>
+          <li><a href="#seq">序列建模：五代模型各补了哪个洞</a></li>
+          <li><a href="#longseq">万级序列怎么存、怎么取</a></li>
+          <li><a href="#graph">图模型：从共现到高阶关联</a></li>
+          <li><a href="#mtl">多目标：ESMM、MMOE、PLE、DBMTL</a></li>
+          <li><a href="#gen">生成式推荐与语义 ID</a></li>
+          <li><a href="#llm">LLM4Rec 的能力边界</a></li>
+          <li><a href="#bandit">探索与利用：Bandit 三件套</a></li>
+          <li><a href="#cold">冷启动与流量池放量</a></li>
+          <li><a href="#compress">蒸馏、量化与压缩</a></li>
+          <li><a href="#quiz">自测：10 道题</a></li>
+        </ol>
+      </div>
+
+      <h2 id="seq"><span class="kicker">T2-1 · SEQUENCE</span>序列建模：五代模型，每一代只补一个洞</h2>
+      <p class="lead">这是过去五年精排最大的结构性增量，也是最容易被讲成"一代更比一代强"的一节。
+        真实情况是：每一代都在补上一代的一个具体缺陷，同时欠下一笔新的工程债。</p>
+
+      <div class="callout">
+        <p><b>先用一句人话说清这一节在干嘛。</b>用户最近看了 100 条视频，现在系统要判断他会不会点"游戏解说"。最笨的办法是把这 100 条压成一个"平均兴趣向量"——相当于把 100 张书签揉成一个纸团，再问"他喜欢什么"。
+          序列建模要解决的就是：<b>别揉成团，按当前候选去挑相关的几条看</b>。DIN 是"挑相关的"，DIEN 是"顺着时间看兴趣怎么变"，SIM 是"书签太多，先粗挑再细看"。</p>
+      </div>
+
+      <h3>① 解决什么问题</h3>
+      <p>最原始的做法是<b>把用户历史行为压成一个定长向量</b>，再拼进特征喂给 MLP。听起来很合理，但有三个致命缺陷。</p>
+      <div class="formula">
+v_u = (1/L) · Σ_{j=1}^{L} e_{i_j}            （mean pooling）
+v_u[d] = max_{j} e_{i_j}[d]                  （max pooling）
+<span class="note">e_{i_j} = 第 j 个历史物品的 embedding，L = 序列长度，d = 向量维度。sum pooling 只是把 1/L 去掉，问题一样。</span>
+      </div>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>缺陷一：与候选无关</h4>
+          <p>同一用户面对"健身餐"和"游戏解说"两个候选，用的是<b>同一个 v_u</b>。模型只能靠后面的全连接层去区分，但信息在池化那一步就已经被抹平了。</p>
+        </div>
+        <div class="card accent">
+          <h4>缺陷二：多峰兴趣被平均</h4>
+          <p>用户既看健身也看美食，平均之后的向量落在两个兴趣中间——对任何一类都不像。兴趣越分散，池化向量越没有信息量。</p>
+        </div>
+        <div class="card accent">
+          <h4>缺陷三：长序列被稀释</h4>
+          <p>L = 1000 时，一条真正相关的行为权重只有 0.1%。序列越长，池化越接近于"用户历史的热门背景噪声"。</p>
+        </div>
+      </div>
+      <p>后面四代模型，就是依次打这三个缺陷、再打"序列太长算不动"这一个工程缺陷。</p>
+
+      <div class="chart">
+        <svg viewBox="0 0 900 200" role="img" aria-label="序列建模五代演进">
+          <defs>
+            <marker id="arSeq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"></path>
+            </marker>
+          </defs>
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <rect x="12" y="30" width="164" height="92" rx="10" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="94" y="54" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1e293b">Pooling 时代</text>
+            <text x="94" y="76" text-anchor="middle" font-size="11.5" fill="#475467">行为 → 一个定长向量</text>
+            <text x="94" y="96" text-anchor="middle" font-size="11.5" fill="#b91c1c">与候选无关</text>
+            <line x1="178" y1="76" x2="186" y2="76" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSeq)"></line>
+
+            <rect x="190" y="30" width="164" height="92" rx="10" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="272" y="54" text-anchor="middle" font-size="13.5" font-weight="700" fill="#115e59">DIN · 2018</text>
+            <text x="272" y="76" text-anchor="middle" font-size="11.5" fill="#475467">候选做 query 的注意力</text>
+            <text x="272" y="96" text-anchor="middle" font-size="11.5" fill="#0d9488">补：兴趣多峰</text>
+            <line x1="356" y1="76" x2="364" y2="76" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSeq)"></line>
+
+            <rect x="368" y="30" width="164" height="92" rx="10" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="450" y="54" text-anchor="middle" font-size="13.5" font-weight="700" fill="#115e59">DIEN · 2019</text>
+            <text x="450" y="76" text-anchor="middle" font-size="11.5" fill="#475467">GRU + AUGRU + aux loss</text>
+            <text x="450" y="96" text-anchor="middle" font-size="11.5" fill="#0d9488">补：兴趣随时间漂移</text>
+            <line x1="534" y1="76" x2="542" y2="76" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSeq)"></line>
+
+            <rect x="546" y="30" width="164" height="92" rx="10" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="628" y="54" text-anchor="middle" font-size="13.5" font-weight="700" fill="#7c4a05">DSIN · 2019</text>
+            <text x="628" y="76" text-anchor="middle" font-size="11.5" fill="#475467">会话切分 + 两层注意力</text>
+            <text x="628" y="96" text-anchor="middle" font-size="11.5" fill="#b45309">补：行为不是扁平的</text>
+            <line x1="712" y1="76" x2="720" y2="76" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSeq)"></line>
+
+            <rect x="724" y="30" width="164" height="92" rx="10" fill="#feeceb" stroke="#fbd0cd"></rect>
+            <text x="806" y="54" text-anchor="middle" font-size="13.5" font-weight="700" fill="#7f1d1d">SIM · 2020</text>
+            <text x="806" y="76" text-anchor="middle" font-size="11.5" fill="#475467">GSU 粗筛 + ESU 精算</text>
+            <text x="806" y="96" text-anchor="middle" font-size="11.5" fill="#b91c1c">补：万级序列算不动</text>
+
+            <line x1="12" y1="150" x2="888" y2="150" stroke="#e4e8f0" stroke-width="1"></line>
+            <text x="12" y="174" font-size="11.5" fill="#667085">规律：前四代在补"建模能力"，第五代在补"可计算性"。所以 SIM 不是更聪明的模型，而是更便宜的前置过滤器。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 1</b> · 序列建模五代。每一代解决上一代的一个具体缺陷，而不是全面超越。</div>
+      </div>
+
+      <h3>② 核心结构</h3>
+      <p><b>DIN：把候选当 query。</b>它只改了一件事——用户表示不再是固定向量，而是"针对当前候选现算"的加权和。</p>
+      <div class="formula">
+v_u(A) = Σ_{j=1}^{L} a_j · e_{i_j}
+a_j = exp( MLP([e_{i_j}, e_A, e_{i_j} ⊙ e_A]) ) / Σ_{k=1}^{L} exp( MLP([e_{i_k}, e_A, e_{i_k} ⊙ e_A]) )
+<span class="note">e_A = 候选物品 embedding（query）；e_{i_j} = 历史行为 embedding（key 和 value 同源）；⊙ = 逐元素乘，用来显式表达"这个行为与这个候选有多像"；a_j 是序列维度上的 softmax 权重，和为 1。注意：分母对每个候选都要重算一遍，这正是 DIN 无法用在召回层的原因。</span>
+      </div>
+      <p>公式里的 MLP 输入是<b>[行为, 候选, 行为×候选]</b>三元组，而不是单纯的内积。内积只能表达"方向接近"，加上逐元素积之后，模型可以学"在同一维度上同时强"这种更细的匹配模式。工程上还有个常被忽略的细节：序列里要保留<b>时间差、类目、行为类型</b>等 side info 拼进 key，否则注意力只能看 ID 相似度。</p>
+      <p><b>DIEN：兴趣会漂移。</b>DIN 把所有历史行为平铺在注意力池里，默认"三个月前看的东西和昨天看的一样重要"。DIEN 加了两层：</p>
+      <div class="formula">
+i_t = GRU(e_t, i_{t-1})                 （兴趣抽取层：把行为序列编码成兴趣状态序列）
+L_aux = −(1/N) Σ [ y·log σ(W·i_t) + (1−y)·log(1−σ(W·i_t)) ]   （辅助损失）
+v_u(A) = Σ_t a_t · i_t ,  a_t = softmax( i_t<sup>T</sup> e_A )
+<span class="note">GRU 的隐状态 i_t 表示"看到第 t 个行为后用户处于什么兴趣状态"。aux loss 的监督信号是：用 i_t 去预测第 t+1 个行为是否发生（正例是真实的下一个行为，负例是随机采样的物品）。它解决的是"CTR 标签太稀疏，中间状态学不出来"这个问题。AUGRU 则把 a_t 乘进 GRU 的更新门，让兴趣演化本身也受候选调制。</span>
+      </div>
+      <p>aux loss 是 DIEN 真正的贡献，也是最容易被面试官追问的点：<b>没有它，GRU 的隐状态只靠最终 CTR 一个标量监督，梯度传不到中间时刻</b>，学出来的"兴趣"其实是噪声。</p>
+      <p><b>DSIN：行为不是一条扁平的线。</b>用户的行为天然分"会话"（session）：一次连续使用是一段兴趣，隔几小时再来是另一段。DSIN 先按时间间隔切分（公开资料口径：间隔 &gt; 30 分钟视为新会话），然后做两层建模：</p>
+      <ul class="checklist">
+        <li><b>会话内</b>：用 Transformer 的 self-attention 建模会话内部的行为依赖，并加入四类 bias——位置偏置、相对位置偏置、行为频次偏置、会话长度偏置。</li>
+        <li><b>会话间</b>：用 BiLSTM 按时间顺序串起各会话向量，得到"会话演化"表示。</li>
+        <li><b>输出</b>：本地激活（当前会话对候选的注意力）+ 全局激活（所有会话对候选的注意力）拼接，喂给 MLP。</li>
+      </ul>
+      <p><b>SIM：先粗筛，再精算。</b>真实业务的行为序列是 10<sup>4</sup> ~ 10<sup>5</sup> 级（公开资料口径），DIN 类模型根本吃不下。SIM 拆成两段：</p>
+      <div class="chart">
+        <svg viewBox="0 0 900 230" role="img" aria-label="SIM 两阶段结构">
+          <defs>
+            <marker id="arSim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"></path>
+            </marker>
+          </defs>
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <text x="18" y="24" font-size="11.5" fill="#667085">全量行为序列</text>
+            <text x="18" y="42" font-size="11.5" fill="#b91c1c">L ≈ 10⁴ ~ 10⁵</text>
+            <g fill="#e2e8f0" stroke="#cbd5e1">
+              <rect x="18" y="58" width="120" height="12" rx="3"></rect>
+              <rect x="18" y="76" width="120" height="12" rx="3"></rect>
+              <rect x="18" y="94" width="120" height="12" rx="3"></rect>
+              <rect x="18" y="112" width="120" height="12" rx="3"></rect>
+              <rect x="18" y="130" width="120" height="12" rx="3"></rect>
+              <rect x="18" y="148" width="120" height="12" rx="3"></rect>
+            </g>
+            <text x="78" y="184" text-anchor="middle" font-size="14" fill="#94a3b8">⋯⋯</text>
+
+            <line x1="146" y1="104" x2="176" y2="104" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSim)"></line>
+
+            <rect x="182" y="46" width="196" height="116" rx="10" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="280" y="72" text-anchor="middle" font-size="13.5" font-weight="700" fill="#312e81">GSU · 粗筛</text>
+            <text x="280" y="96" text-anchor="middle" font-size="11.5" fill="#475467">硬搜索：类目/关键词倒排</text>
+            <text x="280" y="116" text-anchor="middle" font-size="11.5" fill="#475467">软搜索：画像向量内积</text>
+            <text x="280" y="142" text-anchor="middle" font-size="11.5" fill="#4f46e5">无参数 / 轻参数，可离线建索引</text>
+
+            <line x1="386" y1="104" x2="416" y2="104" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSim)"></line>
+
+            <rect x="422" y="58" width="130" height="92" rx="10" fill="#fff" stroke="#e4e8f0"></rect>
+            <text x="487" y="84" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Top-k 行为</text>
+            <text x="487" y="108" text-anchor="middle" font-size="11.5" fill="#667085">k = 100 ~ 200</text>
+            <text x="487" y="130" text-anchor="middle" font-size="11.5" fill="#667085">（经验值）</text>
+
+            <line x1="560" y1="104" x2="590" y2="104" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSim)"></line>
+
+            <rect x="596" y="46" width="180" height="116" rx="10" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="686" y="72" text-anchor="middle" font-size="13.5" font-weight="700" fill="#115e59">ESU · 精算</text>
+            <text x="686" y="96" text-anchor="middle" font-size="11.5" fill="#475467">DIN 式注意力</text>
+            <text x="686" y="116" text-anchor="middle" font-size="11.5" fill="#475467">候选 e_A 对 k 条行为打分</text>
+            <text x="686" y="142" text-anchor="middle" font-size="11.5" fill="#0d9488">O(k·d) 而不是 O(L·d)</text>
+
+            <line x1="784" y1="104" x2="814" y2="104" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arSim)"></line>
+            <text x="818" y="98" font-size="12" fill="#111827">用户表示</text>
+            <text x="818" y="118" font-size="12" fill="#111827">→ MLP → pCTR</text>
+
+            <text x="18" y="216" font-size="11.5" fill="#667085">两阶段的关键取舍：GSU 用"类目/关键词/画像"这种便宜信号换掉 99% 的序列，代价是可能筛掉真正相关的那条。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 2</b> · SIM 的 GSU + ESU。它解决的是可计算性，不是建模能力。</div>
+      </div>
+
+      <p><b>算一笔注意力复杂度。</b>这是面试里区分"看过论文"和"想过工程"的分水岭：</p>
+      <div class="formula">
+内积注意力：O( N<sub>cand</sub> · L · d )
+MLP 注意力（DIN 原版）：O( N<sub>cand</sub> · L · (d + d²) )
+SIM 之后：O( N<sub>cand</sub> · k · d ) ，k ≪ L
+<span class="note">N_cand = 一次请求要打分的候选数，L = 序列长度，d = embedding 维度，k = GSU 保留的行为条数。代入一组数：N=100、L=10⁴（十万级太长，取万级）、d=64 → 100×10⁴×64 ≈ 6.4×10⁷ 次乘加；SIM 取 k=200 → 1.28×10⁶，差 50 倍。这就是为什么长序列必须两阶段。</span>
+      </div>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>新增结构</th><th>换来的收益</th><th>付出的代价</th><th>能吃多长的序列</th></tr></thead>
+          <tbody>
+            <tr><td>Mean/Max Pooling</td><td>无</td><td>便宜、可预计算、能进召回</td><td>与候选无关，兴趣被平均</td><td>任意（但越长越糊）</td></tr>
+            <tr><td>DIN</td><td>候选-行为注意力</td><td>用户表示随候选变化</td><td>每候选算一遍，只能精排；无法预计算</td><td>50 ~ 200（经验值）</td></tr>
+            <tr><td>DIEN</td><td>GRU + AUGRU + aux loss</td><td>建模兴趣演化</td><td>GRU 串行、训练慢；aux 样本构造复杂；L&lt;2 时不可用</td><td>20 ~ 100（经验值）</td></tr>
+            <tr><td>DSIN</td><td>会话切分 + Transformer + BiLSTM</td><td>利用会话结构</td><td>依赖会话切分阈值；跨设备行为断裂；参数量再涨</td><td>按会话数控制</td></tr>
+            <tr><td>SIM</td><td>GSU 索引 + ESU</td><td>能吃万级序列</td><td>两阶段有召回损失；索引链路长；一致性难保证</td><td>10<sup>4</sup> ~ 10<sup>5</sup></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>最贵的一条不是算力，是"用户向量不能预计算"。</b>Pooling 时代，用户向量可以离线算好、在线只做内积，所以能进召回；DIN 之后用户向量依赖候选，必须在线逐候选算。这一条直接决定了：<b>序列模型只能待在精排，最多用到粗排的轻量版本</b>。</p>
+      <p>第二条：<b>训练和线上的截断口径必须完全一致</b>。离线训练习惯取"最近 50 条"，线上因为 KV 只存了最近 20 条就取 20 条——模型在线上看到的是分布外输入，AUC 必掉。这类问题在排查清单里排在"链路不一致"那一档，但根源是模型设计时没写清楚序列契约。</p>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>人均序列 &lt; 3 条</b>：注意力没有可分配的对象。L=1 时 softmax 权重恒为 1，DIN 严格等价于"取最近一条行为的 DeepFM"。</li>
+        <li><b>兴趣漂移弱</b>：用户 30 天只看两个类目时，DIEN 的演化层学不到东西，只会增加串行开销。</li>
+        <li><b>延迟预算 &lt; 20ms 的层</b>：粗排/召回的候选是千级、万级，逐候选算注意力直接打爆预算。</li>
+        <li><b>没有内容标签体系</b>：SIM 的硬 GSU 依赖类目/关键词倒排。标签脏的话，GSU 会稳定地筛掉正确的那条行为，而且这种损失在离线指标上很难看出来。</li>
+      </ul>
+
+      <h4>回到项目一：为什么 DIN 只从 0.8520 涨到 0.8584</h4>
+      <p>先看完整阶梯：LR <b>0.8473</b> → FM <b>0.8501</b> → DeepFM <b>0.8520</b> → DIN（简化版）<b>0.8584</b>；
+        对应 LogLoss 从 0.2939 → 0.2913 → 0.2905 → <b>0.2867</b>。从 LR 走到 DeepFM 跨了三个模型，一共拿到 0.0047；
+        从 DeepFM 到 DIN 又只拿到 0.0064——<b>序列这一代是整条链路上性价比最低的一次升级</b>，原因有三个，每一个都能在数据里找到证据：</p>
+      <div class="grid c3">
+        <div class="card teal">
+          <h4>序列太短</h4>
+          <p>序列分布：0 条 <b>156,359</b>（49.19%）、1–3 条 <b>132,063</b>（41.55%）、4–10 条 <b>29,444</b>（9.26%）。近一半曝光根本没有历史行为，DIN 对它们完全退化成无序列模型；另一半大部分只有 1~2 条，注意力权重接近常数。</p>
+        </div>
+        <div class="card teal">
+          <h4>兴趣漂移弱</h4>
+          <p>仿真数据的用户兴趣由固定类目生成，没有"这周迷健身、下周迷露营"的演化。DIEN 赖以生效的前提不存在，所以这一代在项目一里连做的必要都没有。</p>
+        </div>
+        <div class="card teal">
+          <h4>边际收益递减 + 校准变差</h4>
+          <p>AUC 0.8520 → 0.8584（+0.0064，相对 +0.75%），LogLoss 0.2905 → 0.2867。但预测均值从 0.1446 漂到 <b>0.1527</b>，真实 CTR 只有 0.1378——<b>高估 10.8%</b>。排序略好，概率更不可信。</p>
+        </div>
+      </div>
+      <p>这里有个很有价值的推论：<b>想让 DIN 在项目一上真正发挥作用，先改数据而不是改模型</b>。把"只保留点击"改成"保留全部曝光（含未点击）作为行为序列"，人均序列能从 1.16 提到 10 以上，DIN 才可能拿到 1 个点以上的增量。但这一步会引入"曝光未点击也算兴趣"的噪声，需要按停留时长加权。<b>模型的天花板，往往由样本构造决定，而不是由结构决定。</b></p>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>Pooling 解决"有没有"，DIN 解决"与候选有没有关系"，DIEN 解决"兴趣随时间变没变"，DSIN 解决"行为是不是分段"，SIM 解决"序列太长算不动"。
+          项目一序列长度 1.16、49.19% 的曝光序列为 0，所以 DIN 只能涨 0.0064——<b>不是模型不行，是数据没有给它发挥的空间</b>。</p>
+      </div>
+
+      <h2 id="longseq"><span class="kicker">T2-2 · SERVING</span>万级序列怎么存、怎么取：SIM 之后的工程账</h2>
+      <p class="lead">论文到 SIM 就结束了，工程从这里开始。算法假设"你能拿到 10⁴ 条行为"，但真实链路里这些行为散在日志里、要跨表 join、要在 10ms 内读出来，还要和训练口径对齐。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>要回答四个具体问题：<b>序列存在哪</b>（日志 / 特征库 / KV）、<b>取多少</b>（截断策略）、<b>怎么取快</b>（索引与预计算）、<b>怎么保证训练线上一致</b>（point-in-time）。这四个问题任何一个没解决，SIM 都落不了地。</p>
+
+      <h3>② 核心结构</h3>
+      <div class="pipeline">
+        <div class="step"><b>行为日志</b><span>Kafka 实时流 + Hive 全量归档，保留 90 天以上</span></div>
+        <div class="step"><b>离线特征库</b><span>按 user 聚合，天级产出，存全量序列与统计特征</span></div>
+        <div class="step"><b>在线 KV</b><span>最近 N 条 + 长期兴趣摘要向量，P99 &lt; 5ms</span></div>
+        <div class="step"><b>请求时拼装</b><span>拉序列 → 查 item embedding → 送 GSU/ESU</span></div>
+      </div>
+      <p><b>手段一：截断。</b>三种口径，选一种并写进特征契约：最近 N 条（N = 100~500，经验值）、最近 T 天（如 30 天）、或"最近 N 条 + 长期摘要"。截断口径必须训练线上一致，否则就是典型的链路不一致。</p>
+      <p><b>手段二：分桶。</b>把一条长序列拆成多个桶，桶内各取 Top-M，再合并。常见切法：按类目分桶（保证兴趣多样性不被热门类目淹没）、按会话分桶（配合 DSIN）、按时间窗分桶（近 7 天 / 7–30 天 / 30 天以上，各取一定比例）。分桶的本质是<b>用结构化的采样代替随机截断</b>。</p>
+      <p><b>手段三：离线 embedding。</b>序列里只存 <code>item_id + ts + 少量 side info</code>，embedding 离线算好放特征库/向量表，在线查表。绝不能在在线链路里跑 item encoder——那是几十毫秒级的开销。</p>
+      <p><b>手段四：KV 存储。</b>user_id → 定长数组（item_id、时间戳、类目、行为类型）。定长是为了让反序列化可预测；变长数组在 P99 上会出现尖刺。序列特别长时，KV 里只放"最近 200 条 + 一个 64 维长期兴趣摘要向量"，摘要由离线模型产出。</p>
+      <div class="formula">
+存储量 ≈ 用户数 × 每人保留条数 × 单条字节数
+          = 2×10⁷ × 200 × 8 B ≈ 32 GB（不含副本与索引）
+<span class="note">2000 万用户、每人 200 条、单条按 item_id(4B) + 时间戳(4B) 估。加一主一从就是 64GB，再加 GSU 需要的倒排索引，量级还要再涨。这是"经验值口径"，具体取决于你的用户规模与副本策略——但它说明了一件事：长序列的第一道门槛是存储与内存带宽，不是模型。</span>
+      </div>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>手段</th><th>做法</th><th>收益</th><th>代价 / 风险</th></tr></thead>
+          <tbody>
+            <tr><td>截断</td><td>最近 N 条 / 最近 T 天</td><td>实现最简单，成本可控</td><td>会丢掉长期兴趣；N 太小则 SIM 白做，N 太大则延迟爆</td></tr>
+            <tr><td>分桶</td><td>按类目/会话/时间窗分桶后各取 Top-M</td><td>保留多样性，避免热门类目垄断</td><td>桶的划分规则本身要调；桶多则请求次数多</td></tr>
+            <tr><td>离线 embedding</td><td>item encoder 离线跑，在线只查表</td><td>在线开销从几十 ms 降到查表</td><td>embedding 版本要与模型版本绑定，回滚麻烦</td></tr>
+            <tr><td>在线 KV</td><td>定长数组，P99 &lt; 5ms</td><td>毫秒级取序列</td><td>热点 key（大 V 用户）会打爆单分片；需要本地缓存</td></tr>
+            <tr><td>point-in-time join</td><td>训练样本按"请求时刻"截断序列</td><td>避免特征穿越</td><td>回溯成本高，需要保存历史快照或按事件时间重放</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>最容易翻车的地方：训练集用了"全量未来序列"。</b>离线造样本时图省事，直接用用户 30 天的完整序列去拼每一条样本，于是第 1 天的样本里含有第 20 天的行为——AUC 会漂亮得不像话，上线直接崩。
+          正确做法是 <b>point-in-time join</b>：第 t 条样本只能用时间戳早于 t 的行为。项目一的数据是按请求顺序生成的，天然没有这个问题，但真实业务里这是第一大坑。</p>
+      </div>
+      <p>还有一笔隐性成本：<b>训练吞吐</b>。每条样本带 200 条行为，等于把样本膨胀了 200 倍，DataLoader 和显存都会被序列吃掉。工程上的做法是序列在 collate 阶段才展开、用定长 padding + mask，而不是提前物化成宽表。</p>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>人均序列 &lt; 5 条</b>：项目一人均 1.16，做长序列是纯粹的过度设计——存储、链路、一致性成本全付，收益为零。</li>
+        <li><b>用户规模小、留存短</b>：DAU 十万级、用户生命周期两周的产品，序列根本长不起来。</li>
+        <li><b>团队没有 KV / 特征平台运维能力</b>：一套长序列链路至少要有人维护 KV 集群、特征回填、版本一致性。</li>
+        <li><b>业务对延迟极敏感（&lt; 50ms 全链路）</b>：多一次 KV 读 + 多一次 GSU 检索，预算很难挤出来。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>长序列是"存储 + 截断 + 分桶 + 预计算 + 一致性"五件事的组合，算法只是最后一环。判断要不要做，先看人均序列长度这一个数：<b>小于 5 就不做</b>；决定要做，先把 point-in-time join 和截断契约写进文档，再谈 SIM。</p>
+      </div>
+
+      <h2 id="graph"><span class="kicker">T2-3 · GRAPH</span>图模型：从共现矩阵到高阶关联</h2>
+      <p class="lead">图模型是"把推荐问题看成图上的消息传递"。它的卖点是稀疏场景下的高阶关联，代价是采样、邻居爆炸和更新复杂度。这一节也解释清楚：为什么项目一明确不上图。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>协同过滤的信号来自"共现"：两个物品被同一批人看过。但共现是<b>一阶</b>的，而且极其稀疏——项目一人均交互 1.16 次，绝大多数物品对根本没有共现，ItemCF 的 Recall@100 只有 4.12%，还低于热门召回的 9.66%。</p>
+      <p>图模型的想法是：<b>把"用户-物品"看成二部图，让信息沿着边多跳传播</b>。即使 A 和 B 没有直接共现，只要"看过 A 的人里有人看过 C，看过 C 的人里有人看过 B"，A 和 B 就能通过两跳路径建立关联。这解决两件事：<b>稀疏</b>（多跳补足直接共现的缺失）与<b>高阶关联</b>（用户→物品→作者→话题的复合关系）。</p>
+
+      <h3>② 核心结构</h3>
+      <p><b>第一层：ItemCF 的图视角。</b>把交互矩阵 R（用户×物品）看成二部图的邻接矩阵，那么 <code>RᵀR</code> 的第 (i,j) 项就是"同时看过 i 和 j 的用户数"，也就是两跳路径数。所以 ItemCF 的相似度本质上是：</p>
+      <div class="formula">
+sim(i,j) ∝ (RᵀR)<sub>ij</sub> / √( deg(i) · deg(j) )
+<span class="note">deg(i) = 物品 i 的度数（被多少人交互过）。分母是归一化，防止热门物品因为"跟谁都共现"而通吃。这句话翻译成人话：ItemCF 就是"在二部图上数两跳路径，再按度数归一化"。</span>
+      </div>
+      <p><b>第二层：LightGCN。</b>它的核心主张很激进——<b>图卷积里的特征变换矩阵 W 和非线性激活 ReLU 对推荐没用，甚至有害，全部去掉，只保留邻域聚合</b>。</p>
+      <div class="formula">
+e<sub>u</sub><sup>(k+1)</sup> = Σ<sub>i∈N(u)</sub> 1/√(|N(u)|·|N(i)|) · e<sub>i</sub><sup>(k)</sup>
+e<sub>i</sub><sup>(k+1)</sup> = Σ<sub>u∈N(i)</sub> 1/√(|N(i)|·|N(u)|) · e<sub>u</sub><sup>(k)</sup>
+e<sub>u</sub><sup>*</sup> = (1/(K+1)) · Σ<sub>k=0</sub><sup>K</sup> e<sub>u</sub><sup>(k)</sup>
+ŷ<sub>ui</sub> = e<sub>u</sub><sup>*T</sup> · e<sub>i</sub><sup>*</sup>
+<span class="note">N(u) = 用户 u 交互过的物品集合；e<sup>(k)</sup> = 第 k 层的表示；K = 层数（通常 2~3）；最后的 e* 是把各层表示做等权平均（不是只取最后一层），这样同时保留了一阶、二阶、三阶信号。归一化系数 1/√(|N(u)||N(i)|) 是标准的对称归一化，防止高度数节点主导。</span>
+      </div>
+      <p><b>为什么能去掉 W 和 ReLU？</b>因为推荐图的节点特征就是<b>纯 ID embedding</b>，没有图像像素那样的语义输入。在 CV 里，W 做的是"把像素空间映射到语义空间"；推荐里每一层本来就在同一个 embedding 空间里，再加线性变换只是增加参数和过拟合风险，还会让深层网络训练不稳定。这个结论来自消融实验（公开资料口径），不是拍脑袋。</p>
+      <div class="chart">
+        <svg viewBox="0 0 900 300" role="img" aria-label="LightGCN 两跳聚合示意">
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <g stroke="#cbd5e1" stroke-width="1.4">
+              <line x1="450" y1="150" x2="270" y2="150"></line>
+              <line x1="450" y1="150" x2="630" y2="150"></line>
+              <line x1="270" y1="150" x2="150" y2="66"></line>
+              <line x1="270" y1="150" x2="150" y2="234"></line>
+              <line x1="630" y1="150" x2="750" y2="66"></line>
+              <line x1="630" y1="150" x2="750" y2="234"></line>
+            </g>
+            <circle cx="450" cy="150" r="30" fill="#4f46e5"></circle>
+            <text x="450" y="156" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">u</text>
+
+            <circle cx="270" cy="150" r="24" fill="#0d9488"></circle>
+            <text x="270" y="155" text-anchor="middle" font-size="12" fill="#fff">i₁</text>
+            <circle cx="630" cy="150" r="24" fill="#0d9488"></circle>
+            <text x="630" y="155" text-anchor="middle" font-size="12" fill="#fff">i₂</text>
+
+            <circle cx="150" cy="66" r="18" fill="#fff" stroke="#c7d2fe" stroke-width="2"></circle>
+            <text x="150" y="71" text-anchor="middle" font-size="11" fill="#4f46e5">u₁</text>
+            <circle cx="150" cy="234" r="18" fill="#fff" stroke="#c7d2fe" stroke-width="2"></circle>
+            <text x="150" y="239" text-anchor="middle" font-size="11" fill="#4f46e5">u₂</text>
+            <circle cx="750" cy="66" r="18" fill="#fff" stroke="#c7d2fe" stroke-width="2"></circle>
+            <text x="750" y="71" text-anchor="middle" font-size="11" fill="#4f46e5">u₃</text>
+            <circle cx="750" cy="234" r="18" fill="#fff" stroke="#c7d2fe" stroke-width="2"></circle>
+            <text x="750" y="239" text-anchor="middle" font-size="11" fill="#4f46e5">u₄</text>
+
+            <text x="450" y="42" text-anchor="middle" font-size="12" fill="#667085">k = 0：只有自己的 ID embedding</text>
+            <text x="450" y="200" text-anchor="middle" font-size="12" fill="#0d9488">k = 1：聚合直接邻居 i₁, i₂</text>
+            <text x="450" y="222" text-anchor="middle" font-size="12" fill="#667085">k = 2：i₁ 又把 u₁, u₂ 的信息带进来</text>
+            <text x="450" y="286" text-anchor="middle" font-size="11.5" fill="#b45309">K 越大感受野越大，但 K&gt;3 后收益迅速衰减，且过平滑会让所有节点表示趋同</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 3</b> · LightGCN 的两跳聚合。用户 u 的表示在 k=1 时混入物品信息，k=2 时混入"和 u 看过同一物品的其他用户"的信息。</div>
+      </div>
+      <p><b>第三层：PinSage（GraphSAGE 的工业版）。</b>LightGCN 需要全图邻域，十亿级图上跑不动。PinSage 的做法是<b>采样 + 固定扇出</b>：每层随机采固定数量的邻居（公开资料口径：fanout 10，层数 2，即每个节点最多 100 个邻居参与计算），用 mini-batch 训练。邻居不是均匀采样，而是按随机游走的 visit count 做<b>重要性采样</b>（用 MapReduce 算 PPR 分数，取 Top-T）。这样既控制了计算量，又保留了对目标节点最重要的邻居。</p>
+      <p><b>第四层：异构图。</b>真实业务不是"用户-物品"这么干净，而是用户、物品、作者、话题、类目多类节点共存。做法是定义 <b>metapath（元路径）</b>：<code>U-I-U</code>（和你看了同一物品的人）、<code>U-A-U</code>（和你关注了同一作者的人）、<code>U-T-I</code>（你对某话题感兴趣 → 该话题下的物品）。每条 metapath 内部做聚合，再按可学习的权重融合。代价是 metapath 得人工设计，设计得好不好直接决定上限。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>邻居怎么定义</th><th>训练方式</th><th>能撑多大图</th><th>主要风险</th></tr></thead>
+          <tbody>
+            <tr><td>ItemCF</td><td>共现用户（两跳）</td><td>离线统计，无需训练</td><td>千万级物品</td><td>稀疏时信号弱；热门偏置</td></tr>
+            <tr><td>LightGCN</td><td>全图邻居（K 层）</td><td>全图训练 / 大批量</td><td>百万级节点较舒服</td><td>邻居爆炸；需存全图；增量难</td></tr>
+            <tr><td>PinSage</td><td>重要性采样 Top-T</td><td>mini-batch，采样训练</td><td>十亿级（公开资料口径）</td><td>采样方差；PPR 预计算贵</td></tr>
+            <tr><td>异构图</td><td>按 metapath 定义</td><td>分类型聚合 + 融合</td><td>取决于图分区能力</td><td>metapath 设计靠人；路径爆炸</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>邻居爆炸。</b>K 层、每层扇出 T，一个节点要碰 T<sup>K</sup> 个邻居。T=10、K=2 是 100，K=3 就是 1000。这意味着单条样本的计算量随层数指数增长，所以工业界基本只用 2~3 层。</p>
+      <p><b>更新是最大的运维负担。</b>新物品没有边，图模型对它零信息——这是图模型的冷启动死穴。边权每天都在变（今天的共现和昨天不同），embedding 会漂移。工程上通常两套并存：<b>天级全量重训</b>（保证质量）+ <b>小时级增量更新</b>（只更新活跃节点），再配版本管理和灰度。</p>
+      <p><b>上线还要多一套东西</b>：物品 embedding 索引 + ANN 检索 + 版本一致性校验。相比"双塔"，图模型不是多一个模型，是多一条链路。</p>
+
+      <h3>④ 什么时候不该用</h3>
+      <p><b>项目一就是标准的"不该用"。</b>三条理由，每条都有数字：</p>
+      <ul class="checklist">
+        <li><b>规模太小</b>：5,000 个物品、20,000 个用户，ItemCF 的共现统计秒级就能算完。"图模型擅长的大规模稀疏"在这里不存在。</li>
+        <li><b>共现信号已经被覆盖</b>：ItemCF 的 Recall@100 只有 4.12%，双塔 11.29%——说明真正的瓶颈是"内容与用户的匹配"，不是"图上的高阶关联"。上 LightGCN 最多把 4.12% 往上抬一点，而双塔已经 11.29%。</li>
+        <li><b>收益抵不过复杂度</b>：图模型要多维护图存储、采样、天级重训、embedding 索引四套东西，而项目一的整体 AUC 天花板在 0.858 附近（数据本身的可约误差已经很小）。</li>
+      </ul>
+      <p>更一般地：<b>当内容特征（类目、作者、文本、封面）的解释力明显强于协同信号时，图模型的性价比很低</b>。项目一里类目 CTR 从搞笑 25.07% 到萌宠 6.86%，跨度 18 个百分点，这种信号用内容特征一次就能吃到，不需要在图上传播两跳。</p>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>图模型用"多跳传播"补共现的稀疏，LightGCN 证明"去掉 W 和 ReLU、只做归一化聚合"反而更好，PinSage 用重要性采样把图做到十亿级。
+          代价是邻居爆炸（T<sup>K</sup>）、采样方差、天级重训、新节点冷启。项目一物品 5,000、人均交互 1.16、ItemCF 仅 4.12%，<b>上图是明显的过度设计</b>。</p>
+      </div>
+
+      <h2 id="mtl"><span class="kicker">T2-4 · MULTI-TASK</span>多目标：从硬共享到 PLE，以及怎么融合</h2>
+      <p class="lead">单目标优化 CTR 会训出"标题党"。多目标不是为了多一个指标，而是为了把"点击之后爽不爽"写进模型。这一节的关键不是结构，是<b>任务之间的关系</b>。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>三个问题，按出现频率排序：</p>
+      <ul class="checklist">
+        <li><b>目标不完整</b>：只优化点击，模型会推高点击低满意的内容。项目一完播率 57.3%、点赞率 12.64%，这两个信号在单目标 CTR 模型里完全没被利用。</li>
+        <li><b>样本稀疏</b>：转化（下载、下单、付费）的正样本可能只有点击的 1% 甚至更低，单独训一个 CVR 模型学不动。</li>
+        <li><b>样本选择偏差</b>：CVR 只能用"点击样本"训练，却要在"全量曝光"上预测。点击样本是经过 CTR 模型筛选的，分布和全量曝光不一样。</li>
+      </ul>
+
+      <h3>② 核心结构</h3>
+      <p><b>第一代：Shared Bottom（硬共享）。</b>一个共享底层 + 每个任务一个塔。参数省、稀疏任务能从主任务借梯度，但任务一冲突就互相拖累（负迁移）。</p>
+      <p><b>第二代：ESMM。</b>它不去直接学 pCVR，而是学整条链路的概率，并把两个损失都放在<b>全曝光空间</b>上：</p>
+      <div class="formula">
+pCTCVR(u,i) = pCTR(u,i) × pCVR(u,i)
+L = (1/|D|) Σ<sub>(u,i)∈D</sub> [ ℓ(y<sub>ctr</sub>, pCTR) + ℓ(y<sub>ctcvr</sub>, pCTCVR) ]
+<span class="note">D = 全量曝光样本（不是点击样本）；y_ctr = 是否点击；y_ctcvr = 是否点击且转化。ESMM 不直接给 CVR 塔喂标签，pCVR 只通过 pCTCVR 的乘法被间接监督，但梯度能从全量曝光样本回传过来。这就是它同时解决"样本选择偏差"和"数据稀疏"的机制——不是靠加数据，是靠改损失的定义域。</span>
+      </div>
+      <div class="chart">
+        <svg viewBox="0 0 900 250" role="img" aria-label="ESMM 结构">
+          <defs>
+            <marker id="arEsmm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"></path>
+            </marker>
+          </defs>
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <rect x="20" y="92" width="150" height="70" rx="9" fill="#f8fafc" stroke="#e4e8f0"></rect>
+            <text x="95" y="118" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">稀疏特征</text>
+            <text x="95" y="140" text-anchor="middle" font-size="11" fill="#667085">用户 / 物品 / 上下文</text>
+
+            <line x1="174" y1="127" x2="204" y2="127" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+
+            <rect x="210" y="92" width="140" height="70" rx="9" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="280" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#312e81">共享 Embedding</text>
+            <text x="280" y="142" text-anchor="middle" font-size="11" fill="#475467">两个塔共用</text>
+
+            <line x1="354" y1="110" x2="414" y2="80" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+            <line x1="354" y1="146" x2="414" y2="176" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+
+            <rect x="420" y="42" width="150" height="64" rx="9" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="495" y="68" text-anchor="middle" font-size="12.5" font-weight="700" fill="#115e59">CTR 塔</text>
+            <text x="495" y="90" text-anchor="middle" font-size="11" fill="#475467">输出 pCTR</text>
+
+            <rect x="420" y="148" width="150" height="64" rx="9" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="495" y="174" text-anchor="middle" font-size="12.5" font-weight="700" fill="#7c4a05">CVR 塔</text>
+            <text x="495" y="196" text-anchor="middle" font-size="11" fill="#475467">输出 pCVR</text>
+
+            <line x1="574" y1="74" x2="644" y2="112" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+            <line x1="574" y1="180" x2="644" y2="140" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+
+            <circle cx="682" cy="126" r="28" fill="#fff" stroke="#4f46e5" stroke-width="2"></circle>
+            <text x="682" y="132" text-anchor="middle" font-size="16" font-weight="700" fill="#4f46e5">×</text>
+
+            <line x1="712" y1="126" x2="752" y2="126" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arEsmm)"></line>
+
+            <rect x="758" y="96" width="126" height="60" rx="9" fill="#feeceb" stroke="#fbd0cd"></rect>
+            <text x="821" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#7f1d1d">pCTCVR</text>
+            <text x="821" y="141" text-anchor="middle" font-size="11" fill="#b91c1c">全曝光样本监督</text>
+
+            <text x="20" y="232" font-size="11.5" fill="#667085">关键：两个损失都在全量曝光样本上算。CVR 塔没有独立的 CVR 标签，梯度只能通过 pCTCVR 的乘法回传，等于"借"了全量曝光的数据。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 4</b> · ESMM。乘法结构不是为了好看，是为了让 pCVR 能吃到全曝光样本的梯度。</div>
+      </div>
+      <p><b>第三代：MMOE。</b>所有任务共享一组 expert，每个任务有自己的 gate 对 expert 加权：</p>
+      <div class="formula">
+y_k = h_k( Σ<sub>i=1</sub><sup>n</sup> g<sub>k,i</sub>(x) · E_i(x) )
+g_k(x) = softmax( W<sub>g_k</sub> · x )
+<span class="note">n = expert 个数（常用 3~8）；E_i = 第 i 个 expert 的输出；g_k = 第 k 个任务的 gate 权重，和为 1；h_k = 第 k 个任务的塔。相比硬共享，MMOE 让不同任务自己决定"该听哪个 expert"，从而缓解负迁移。</span>
+      </div>
+      <p><b>第四代：PLE（CGC）。</b>MMOE 的问题在于 expert 全共享，当两个任务真的不相关时，它们仍被迫共用同一批 expert。PLE 把 expert 分成两类：<b>共享 expert</b>（所有任务都能用）和<b>任务专属 expert</b>（只有该任务能用）。gate 也按任务分别算。再往上叠一层，就得到"逐层分离"的结构。</p>
+      <div class="chart">
+        <svg viewBox="0 0 900 280" role="img" aria-label="MMOE 与 PLE 结构对比">
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <text x="30" y="26" font-size="13" font-weight="700" fill="#312e81">MMOE：expert 全共享，靠 gate 分化</text>
+            <text x="500" y="26" font-size="13" font-weight="700" fill="#115e59">PLE：共享 expert + 任务专属 expert</text>
+
+            <rect x="30" y="46" width="76" height="40" rx="7" fill="#f8fafc" stroke="#e4e8f0"></rect>
+            <text x="68" y="71" text-anchor="middle" font-size="11.5" fill="#475467">输入 x</text>
+
+            <rect x="140" y="44" width="60" height="30" rx="6" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="170" y="64" text-anchor="middle" font-size="11" fill="#312e81">E1</text>
+            <rect x="140" y="84" width="60" height="30" rx="6" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="170" y="104" text-anchor="middle" font-size="11" fill="#312e81">E2</text>
+            <rect x="140" y="124" width="60" height="30" rx="6" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="170" y="144" text-anchor="middle" font-size="11" fill="#312e81">E3</text>
+
+            <rect x="236" y="60" width="70" height="28" rx="6" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="271" y="79" text-anchor="middle" font-size="10.5" fill="#7c4a05">gate A</text>
+            <rect x="236" y="114" width="70" height="28" rx="6" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="271" y="133" text-anchor="middle" font-size="10.5" fill="#7c4a05">gate B</text>
+
+            <rect x="340" y="46" width="76" height="56" rx="7" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="378" y="70" text-anchor="middle" font-size="11" fill="#115e59">塔 A</text>
+            <text x="378" y="90" text-anchor="middle" font-size="10.5" fill="#0d9488">pCTR</text>
+            <rect x="340" y="116" width="76" height="56" rx="7" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="378" y="140" text-anchor="middle" font-size="11" fill="#115e59">塔 B</text>
+            <text x="378" y="160" text-anchor="middle" font-size="10.5" fill="#0d9488">pCVR</text>
+
+            <line x1="500" y1="46" x2="500" y2="200" stroke="#e4e8f0" stroke-width="1"></line>
+
+            <rect x="530" y="46" width="76" height="40" rx="7" fill="#f8fafc" stroke="#e4e8f0"></rect>
+            <text x="568" y="71" text-anchor="middle" font-size="11.5" fill="#475467">输入 x</text>
+
+            <rect x="640" y="44" width="56" height="28" rx="6" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="668" y="63" text-anchor="middle" font-size="10.5" fill="#312e81">共享 1</text>
+            <rect x="640" y="80" width="56" height="28" rx="6" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="668" y="99" text-anchor="middle" font-size="10.5" fill="#312e81">共享 2</text>
+            <rect x="640" y="116" width="56" height="28" rx="6" fill="#feeceb" stroke="#fbd0cd"></rect>
+            <text x="668" y="135" text-anchor="middle" font-size="10.5" fill="#7f1d1d">A 专属</text>
+            <rect x="640" y="152" width="56" height="28" rx="6" fill="#feeceb" stroke="#fbd0cd"></rect>
+            <text x="668" y="171" text-anchor="middle" font-size="10.5" fill="#7f1d1d">B 专属</text>
+
+            <rect x="728" y="60" width="62" height="26" rx="6" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="759" y="78" text-anchor="middle" font-size="10.5" fill="#7c4a05">gate A</text>
+            <rect x="728" y="140" width="62" height="26" rx="6" fill="#fef6e7" stroke="#f7e3b5"></rect>
+            <text x="759" y="158" text-anchor="middle" font-size="10.5" fill="#7c4a05">gate B</text>
+
+            <rect x="812" y="44" width="60" height="52" rx="7" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="842" y="66" text-anchor="middle" font-size="10.5" fill="#115e59">塔 A</text>
+            <text x="842" y="84" text-anchor="middle" font-size="10.5" fill="#0d9488">pCTR</text>
+            <rect x="812" y="126" width="60" height="52" rx="7" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="842" y="148" text-anchor="middle" font-size="10.5" fill="#115e59">塔 B</text>
+            <text x="842" y="166" text-anchor="middle" font-size="10.5" fill="#0d9488">pCVR</text>
+
+            <text x="30" y="222" font-size="11.5" fill="#667085">MMOE：任务 A 的 gate 可以给 E1/E2/E3 任意权重，但它们同时也在服务任务 B。</text>
+            <text x="30" y="244" font-size="11.5" fill="#667085">PLE：A 专属 expert 只进 A 的 gate，共享 expert 才跨任务——这就是"解耦"的具体含义。</text>
+            <text x="30" y="266" font-size="11.5" fill="#b45309">代价：PLE 的参数量 = (共享数 + 任务数 × 专属数) × expert 维度，任务越多越贵。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 5</b> · MMOE 与 PLE 的差别不在"有没有 gate"，而在"expert 是否专属"。</div>
+      </div>
+      <p><b>第五代：DBMTL。</b>它把任务之间的<b>依赖关系</b>显式建模成贝叶斯网络：后置任务的输入包含前置任务的表示（不只是共享底层），从而表达"CVR 应该在 CTR 之后判断"这种先后关系。适合有明确因果链的场景（曝光 → 点击 → 转化 → 复购）。</p>
+
+      <h4>怎么选：任务相关性 × 冲突程度</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>任务相关性</th><th>冲突程度</th><th>推荐结构</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td>高（如 CTR 与完播）</td><td>低</td><td>Shared Bottom</td><td>参数最省，共享底层就够，加 gate 是浪费</td></tr>
+            <tr><td>高</td><td>高（如点击 vs 负反馈）</td><td>MMOE</td><td>需要按任务动态选择 expert，硬共享会互相拖累</td></tr>
+            <tr><td>低</td><td>高（如内容消费 vs 社交互动）</td><td>PLE 或直接拆成两个模型</td><td>共享部分越少越好；拆开更简单时优先拆开</td></tr>
+            <tr><td>有先后依赖（CTR → CVR）</td><td>—</td><td>ESMM / DBMTL</td><td>链式结构天然表达"先点击后转化"</td></tr>
+            <tr><td>辅助任务数据极稀疏</td><td>低</td><td>ESMM + Shared Bottom</td><td>靠乘法结构借全曝光样本的梯度</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>判断"相关性"和"冲突"不要靠感觉，用两个数：<b>标签的相关系数</b>（相关性）和<b>单任务 vs 多任务时各任务 AUC 的变化</b>（冲突）。如果多任务训练后主任务 AUC 掉、辅助任务涨，就是典型的跷跷板，直接上 PLE 或拆模型。</p>
+
+      <h4>多目标融合分怎么定</h4>
+      <div class="formula">
+加权： score = w₁·pCTR + w₂·pCVR + w₃·pFinish
+乘性： score = pCTR × pFinish<sup>α</sup>   (0 &lt; α ≤ 1)
+约束： max Σ pCTR   s.t.  负反馈率 ≤ 基线 × 1.2
+<span class="note">加权和可解释、好调，但权重是线性的，无法表达"完播率低到一定程度就直接不要"。乘性天然表达"两个都要"（任一为 0 则整体为 0），但会把分数压得很小，且 α 需要调。约束优化把"护栏"写成硬约束，用拉格朗日乘子或直接规则兜底实现，是广告/内容平台最常用的形态。</span>
+      </div>
+      <p><b>线上调参的现实做法：</b>固定模型，只调 w。做法是把 w 做成配置中心的可调参数 + 按用户分桶做小流量网格搜索，观察"核心指标涨、护栏指标不跌"的帕累托前沿。<b>千万别用离线 AUC 去选 w</b>——AUC 是排序指标，与融合权重无关。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <ul class="checklist">
+        <li><b>参数与延迟</b>：任务数 × 塔的参数量线性增长，精排预算 30~60ms 时，3 个以上的塔就要开始算账。</li>
+        <li><b>门控坍缩</b>：softmax gate 很容易收敛到"只用一个 expert"，等价于退化成单塔。需要 expert dropout、负载均衡正则等手段。</li>
+        <li><b>标签延迟</b>：转化可能延迟几小时到几天。必须定归因窗口（如 7 天），窗口内的样本才能用；窗口外的样本要么丢掉，要么打标为"未转化"（这会带来负样本噪声）。</li>
+        <li><b>ESMM 的独立性假设</b>：它假设 pCTR 与 pCVR 在给定特征下条件独立，实际并不完全成立（想点的人往往也更可能转化）。所以 ESMM 的输出不能当严格概率用，做 eCPM 前要校准。</li>
+        <li><b>任务权重</b>：L = Σ λ_k L_k 里的 λ 是最难调的参数，它直接决定模型偏向哪个目标。</li>
+      </ul>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>只有一个真实业务目标</b>：为了"看起来先进"加辅助任务，只会引入调参负担和负迁移。</li>
+        <li><b>辅助任务的数据质量差</b>：完播的定义如果不可靠（比如自动播放导致的假完播），多任务会把噪声放大到主任务上。</li>
+        <li><b>任务强冲突且样本量小</b>：共享底层学不出共性，不如各训一个模型再在融合层加权——简单、可回滚、好归因。</li>
+        <li><b>转化延迟 &gt; 归因窗口</b>：样本本身不完整，ESMM 也救不了，先解决数据回填。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>ESMM 改的是<b>损失的定义域</b>（全曝光而非点击），MMOE 改的是<b>expert 的用法</b>（gate 加权），PLE 改的是<b>expert 的归属</b>（部分专属）。
+          选型看两件事：任务相关性、冲突程度；冲突大且相关低，就该拆模型而不是加结构。所有多目标模型上线前都要回答：融合权重怎么定、护栏指标是什么、标签延迟多长。</p>
+      </div>
+
+      <h2 id="gen"><span class="kicker">T2-5 · GENERATIVE</span>生成式推荐：把"打分排序"改成"序列生成"</h2>
+      <p class="lead">这是过去两年最热的方向，也是最容易被过度解读的方向。先把结论放前面：<b>它解决的是物品表示与冷启泛化，不是"把精排换掉"。</b></p>
+
+      <h3>① 解决什么问题</h3>
+      <p>传统推荐依赖<b>物品 ID embedding</b>：每个 item 一个向量，从交互里学。这带来两个死结：</p>
+      <ul class="checklist">
+        <li><b>新物品没有 ID 向量</b>：冷启只能靠内容特征兜底，而内容特征和 ID 空间是两套语义，融合很别扭。</li>
+        <li><b>长尾物品学不动</b>：项目一头部 20% 的物品占 36.8% 的曝光，尾部物品的样本极少，ID 向量基本是随机初始化的残留。</li>
+      </ul>
+      <p>生成式推荐的思路是：<b>不给物品分配 ID，而是给物品分配一串"语义词元"（semantic ID），然后让模型像生成文本一样生成下一个物品的词元序列</b>。这样"物品"就落在了语义空间里，新物品只要有内容就能被量化出 ID，长尾物品也能靠语义相近被生成出来。</p>
+
+      <h3>② 核心结构</h3>
+      <p><b>第一步：用 RQ-VAE 把内容向量量化成语义 ID。</b>RQ-VAE = Residual Quantized VAE，残差量化：每一层量化"上一层没拟合掉的残差"。</p>
+      <div class="formula">
+r₀ = z                                  （z 是物品内容的编码向量）
+c_k = argmin<sub>c</sub> ‖ r_{k−1} − e_c ‖₂      （在第 k 层码本里找最近的码字）
+r_k = r_{k−1} − e_{c_k}                  （残差逐层变小）
+semantic_id(item) = (c₁, c₂, c₃)
+<span class="note">e_c = 第 k 层码本里的第 c 个码字（码本大小通常 256，公开资料口径）；c_k = 量化后的码字索引；三层就是 256³ 种组合，足以区分百万级物品。损失 = 重构损失 + 承诺损失（commitment loss，约束编码器输出不要乱跑）。</span>
+      </div>
+      <div class="chart">
+        <svg viewBox="0 0 900 220" role="img" aria-label="RQ-VAE 残差量化">
+          <defs>
+            <marker id="arRq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"></path>
+            </marker>
+          </defs>
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <rect x="20" y="70" width="110" height="56" rx="8" fill="#eef0ff" stroke="#c7d2fe"></rect>
+            <text x="75" y="94" text-anchor="middle" font-size="12" font-weight="700" fill="#312e81">内容编码 z</text>
+            <text x="75" y="113" text-anchor="middle" font-size="10.5" fill="#475467">标题/封面/ASR</text>
+
+            <line x1="134" y1="98" x2="164" y2="98" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arRq)"></line>
+
+            <rect x="170" y="66" width="120" height="64" rx="8" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="230" y="90" text-anchor="middle" font-size="11.5" fill="#115e59">第 1 层量化</text>
+            <text x="230" y="110" text-anchor="middle" font-size="11.5" fill="#0d9488">→ c₁ = 37</text>
+
+            <line x1="294" y1="98" x2="324" y2="98" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arRq)"></line>
+            <text x="309" y="88" text-anchor="middle" font-size="10" fill="#b45309">残差</text>
+
+            <rect x="330" y="66" width="120" height="64" rx="8" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="390" y="90" text-anchor="middle" font-size="11.5" fill="#115e59">第 2 层量化</text>
+            <text x="390" y="110" text-anchor="middle" font-size="11.5" fill="#0d9488">→ c₂ = 152</text>
+
+            <line x1="454" y1="98" x2="484" y2="98" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arRq)"></line>
+            <text x="469" y="88" text-anchor="middle" font-size="10" fill="#b45309">残差</text>
+
+            <rect x="490" y="66" width="120" height="64" rx="8" fill="#e6f7f4" stroke="#a7ded6"></rect>
+            <text x="550" y="90" text-anchor="middle" font-size="11.5" fill="#115e59">第 3 层量化</text>
+            <text x="550" y="110" text-anchor="middle" font-size="11.5" fill="#0d9488">→ c₃ = 9</text>
+
+            <line x1="614" y1="98" x2="644" y2="98" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#arRq)"></line>
+
+            <rect x="650" y="62" width="230" height="72" rx="8" fill="#fff" stroke="#4f46e5"></rect>
+            <text x="765" y="88" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4f46e5">semantic ID = (37, 152, 9)</text>
+            <text x="765" y="110" text-anchor="middle" font-size="11" fill="#667085">3 个 token，词表各 256</text>
+            <text x="765" y="126" text-anchor="middle" font-size="10.5" fill="#0d9488">相近内容 → 前缀相同</text>
+
+            <text x="20" y="176" font-size="11.5" fill="#667085">层级结构的好处：c₁ 表示粗粒度类别，c₂/c₃ 逐层细化。于是"同前缀"天然表示"语义相近"，这是 ID embedding 给不了的结构。</text>
+            <text x="20" y="198" font-size="11.5" fill="#b45309">风险：不同物品可能撞到同一串 ID（码本容量有限），解码时要处理"一对多"。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 6</b> · RQ-VAE 的三层残差量化。语义 ID 是"内容 → 离散词元"的压缩，不是随机分配。</div>
+      </div>
+      <p><b>第二步：把推荐变成自回归生成。</b>用户历史行为序列被转成 semantic ID 序列，模型做下一 token 预测：</p>
+      <div class="formula">
+p(s | u) = Π<sub>k=1</sub><sup>K</sup> p( s_k | s<sub>&lt;k</sub>, u )
+L = − Σ log p( s_k | s<sub>&lt;k</sub>, u )
+<span class="note">s = 目标物品的 semantic ID（K 个 token，K=3）；u = 用户历史（同样被转成 token 序列）；s_&lt;k = 前 k−1 个已生成的 token。训练就是标准的 next-token 交叉熵；推理时用 beam search 生成若干候选 ID，再映射回具体物品。</span>
+      </div>
+      <p>TIGER 这类工作的完整链条是：<b>内容 → RQ-VAE → semantic ID → 用户序列 token 化 → encoder-decoder 生成 → 候选物品</b>。它把"召回 + 排序"部分地合并成了一个生成过程，但工程上通常只把它当<b>一路召回</b>用。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>约束</th><th>具体表现</th><th>量级感（经验值/公开资料口径）</th></tr></thead>
+          <tbody>
+            <tr><td>解码延迟</td><td>K 个 token 要 K 次前向，beam search 还要 ×beam 宽度</td><td>比 ANN 内积检索（微秒~毫秒级/条）慢 2~3 个数量级</td></tr>
+            <tr><td>不可控</td><td>无法硬性保证"不出已看过/不合规/不下架"</td><td>必须再加一层过滤与校验，等于把规则又加回来</td></tr>
+            <tr><td>无法直接算 eCPM</td><td>生成的是 ID，不是概率分数；没有 pCTR 就无法乘 bid</td><td>广告场景基本不可用</td></tr>
+            <tr><td>评估困难</td><td>ID 冲突导致一个 ID 对应多个物品；Recall@K 的口径要重新定义</td><td>离线指标与线上收益的相关性弱</td></tr>
+            <tr><td>训练门槛</td><td>需要海量长序列 + 内容编码器 + 码本训练（三阶段）</td><td>冷启物品反而更难：先要训好 RQ-VAE</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p><b>必须说清楚的一句：</b>截至本教程编写时，生成式推荐在工业界仍以<b>实验 / 局部场景</b>为主——常见落点是"作为一路召回""做兴趣探索""做内容侧的商品理解"，
+          而<b>不是默认替换精排</b>。原因是精排的核心职责是"在几百个候选里给出可校准的概率分"，而生成模型输出的是离散 ID 序列，这两件事在目标函数上就不一样。</p>
+      </div>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>物品数只有几千</b>：项目一 5,000 个物品，一张 ID embedding 表就能装下，语义 ID 的压缩收益几乎为零，还多背一套 RQ-VAE。</li>
+        <li><b>需要精确概率做 eCPM</b>：广告竞价必须有可校准的 pCTR，生成式给不出来。</li>
+        <li><b>序列极短</b>：项目一人均 1.16，生成模型没有上下文可条件化，效果不会比热门好。</li>
+        <li><b>强合规场景</b>：政务、医疗这类不允许"模型自由发挥"的业务（如项目二），必须用可控的规则 + 检索。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>生成式推荐的价值在<b>物品表示</b>——用 RQ-VAE 把内容压成语义 ID，从而让冷启和长尾有语义可依；它把推荐从"ID 查表"变成"序列生成"。
+          代价是解码延迟高 2~3 个数量级、输出不可控、无法直接算 eCPM、评估口径要重做。<b>现阶段是召回/探索的一路，不是精排的替代品。</b></p>
+      </div>
+
+      <h2 id="llm"><span class="kicker">T2-6 · LLM4REC</span>LLM 在推荐链路里能干什么、不能干什么</h2>
+      <p class="lead">把 LLM 当"更强的特征工程工具"是当下最务实的用法；把它当"在线精排打分器"是最常见的误用。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>推荐系统的传统短板是<b>语义理解</b>：模型知道"这个视频被 25% 的人点了"，但不知道"它在讲减脂餐"。LLM 补的正是这一块：内容理解（打标、摘要、类目纠错）、冷启画像（从简介/标题推断兴趣）、语义特征（把文本变成可用的向量或标签）、对话式推荐（多轮澄清需求）、重排理由生成（"因为你看过 X"）。</p>
+      <p>它<b>不解决</b>的是"在 300 个候选里按 pCTR 排序"——那是数值优化问题，不是语言理解问题。</p>
+
+      <h3>② 核心结构</h3>
+      <p>三种集成方式，按"离在线"分：</p>
+      <div class="pipeline">
+        <div class="step"><b>离线批处理</b><span>LLM 读标题/封面/ASR → 产出标签、摘要、embedding，写入特征库</span></div>
+        <div class="step"><b>近线小模型</b><span>把 LLM 的能力蒸馏成小模型/双塔，在线毫秒级调用</span></div>
+        <div class="step"><b>在线对话式</b><span>多轮槽位抽取 + 工具调用（检索/过滤），只用于低频高价值场景</span></div>
+      </div>
+      <p>第一种是主力：<b>离线跑一遍，在线只查表</b>。它把 LLM 的高延迟挡在请求链路之外，代价是标签新鲜度受批处理周期限制（天级）。第二种是折中：用 LLM 产出软标签蒸馏到小模型，把"语义能力"压缩成"几十维向量"。第三种只适合客服式、导购式场景，因为它是秒级延迟。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>能力</th><th>能用（推荐）</th><th>慎用（要加护栏）</th><th>别用（会出事）</th></tr></thead>
+          <tbody>
+            <tr><td>内容理解 / 打标</td><td>离线批量打标签、类目纠错、摘要</td><td>标签直接当强特征（要抽样校验准确率）</td><td>在线逐条调用做实时打标</td></tr>
+            <tr><td>冷启画像</td><td>从注册信息/简介推断兴趣，做召回兜底</td><td>把推断结果写死成用户画像（用户会变）</td><td>用推断结果替代真实行为做精排特征</td></tr>
+            <tr><td>特征增强</td><td>文本 embedding、query 改写、同义扩展</td><td>embedding 维度高、需做降维与版本管理</td><td>把 LLM 输出直接拼进精排做原始特征</td></tr>
+            <tr><td>对话式推荐</td><td>低频、高价值、可容忍秒级延迟的场景</td><td>需要槽位约束与工具调用，防止瞎编</td><td>高并发主搜索链路</td></tr>
+            <tr><td>重排 / 解释</td><td>生成推荐理由、做多样性重排的语义约束</td><td>生成内容要过合规与事实校验</td><td>用 LLM 决定最终排序结果</td></tr>
+            <tr><td>精排打分</td><td>—</td><td>离线做教师模型蒸馏（成本高但可行）</td><td>在线逐候选打分：延迟 × 候选数，必崩</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>四条硬约束，逐条算账：</b></p>
+      <ul class="checklist">
+        <li><b>延迟</b>：精排预算 30~60ms，要打 300 条候选。LLM 单次调用即使 200ms，300 条就是 60 秒。离线/近线是唯一可行位置。</li>
+        <li><b>成本</b>：按 token 计费，离线全量打标是"一次性大钱"，可以接受；在线按 QPS 乘 token 数是"持续性大钱"，通常不可接受。</li>
+        <li><b>可解释性</b>：LLM 的输出不稳定（同样输入两次结果不同），无法作为强规则；用于生成解释文案时，必须做事实校验。</li>
+        <li><b>稳定性</b>：供应商模型升级会导致特征分布漂移，所有下游模型都要重训。生产上要固定模型版本、缓存结果、做好降级。</li>
+      </ul>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>延迟 &lt; 100ms 的在线链路</b>：无论多小的模型，只要按候选逐条调用就不可行。</li>
+        <li><b>需要严格概率校准</b>：广告 eCPM 要的是"预测 0.12 就真的约 12%"，LLM 给不出可校准的数值。</li>
+        <li><b>数据不能出域</b>：用户隐私、政务数据（项目二）通常不允许调用外部 API，只能本地小模型。</li>
+        <li><b>样本量小、收益无法验证</b>：LLM 特征带来的增益往往只有千分之几，A/B 需要很大样本才能测出来，先算样本量再决定投入。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>LLM 在推荐里最好的位置是<b>离线的语义生产者</b>（打标、embedding、画像）和<b>低频的对话入口</b>，最坏的位置是<b>在线精排打分器</b>。
+          判断标准就三条：延迟能不能进预算、成本能不能按 QPS 摊平、输出能不能被校验。</p>
+      </div>
+
+      <h2 id="bandit"><span class="kicker">T2-7 · EXPLORE</span>探索与利用：Bandit 三件套怎么用</h2>
+      <p class="lead">推荐系统天生是个在线决策问题：你只有一次曝光机会，既要拿当下的收益（利用），又要为未来收集信息（探索）。Bandit 就是把这件事写成一个可计算的策略。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>三个典型场景：</p>
+      <ul class="checklist">
+        <li><b>冷启</b>：新物品/新创意不知道 CTR，需要先试。试得太多伤体验，试得太少永远不知道好坏。</li>
+        <li><b>创意优选</b>：同一个广告主有 20 套素材，要动态决定预算给谁。</li>
+        <li><b>流量分配</b>：多个策略/多个模型版本同时在线，要按表现动态调流量，而不是固定 50/50 的 A/B。</li>
+      </ul>
+
+      <h3>② 核心结构</h3>
+      <div class="formula">
+ε-greedy：以 ε 的概率随机选一个臂，以 1−ε 的概率选当前均值最高的臂
+UCB：      a_t = argmax<sub>a</sub> [ μ̂<sub>a</sub> + c·√( ln t / n<sub>a</sub> ) ]
+Thompson： θ<sub>a</sub> ~ Beta(α<sub>a</sub>, β<sub>a</sub>)，选 argmax<sub>a</sub> θ<sub>a</sub>
+<span class="note">μ̂_a = 臂 a 的历史平均收益；n_a = 臂 a 被选中的次数；t = 总轮次；c = 探索系数（越大越爱探索）；α_a、β_a = Beta 分布的两个参数，分别累计"点击次数+1"和"未点击次数+1"。三个方法解决的是同一个问题，区别只在"如何量化不确定性"。</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方法</th><th>不确定性怎么表达</th><th>适合</th><th>坑</th></tr></thead>
+          <tbody>
+            <tr><td>ε-greedy</td><td>不用表达，直接按比例随机</td><td>臂少、实现最快、要求可解释</td><td>ε 固定时后期还在乱试；ε 太小则新臂永远起不来</td></tr>
+            <tr><td>UCB</td><td>用"置信上界"奖励探索少的臂</td><td>收益有界、需要确定性策略</td><td>非平稳环境下历史均值会过期；c 难调</td></tr>
+            <tr><td>Thompson Sampling</td><td>用后验分布采样，天然按不确定性分配</td><td>二值反馈（点/不点）最自然</td><td>需要维护每个臂的分布；臂多时统计量稀疏</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>落地时最常见的形态是<b>混合</b>：主流量用模型打分（利用），留 5%~10% 流量做 ε-greedy 或 Thompson 探索，探索得到的样本回流到训练集。这样既保收益，又持续产生新数据。<b>探索流量本身就是"数据生产成本"</b>，要算进 ROI。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <ul class="checklist">
+        <li><b>离线评估极难</b>：你的日志是旧策略产生的，新策略想试的臂在日志里可能一次都没出现过。要用 IPS / doubly robust 做反事实估计，而 IPS 的方差随"策略差异"急剧变大——两个策略差得越远，估计越不可信。</li>
+        <li><b>方差大</b>：小流量下 CTR 的置信区间很宽。用样本量公式估一下：基准 CTR 13.82%，想判定 1 个百分点的差异，每组约需 <b>1.9 万</b>曝光（16·p(1−p)/Δ²，双侧 α=0.05、power=80% 的经典近似）。想判定 0.5 个百分点，每组要 7.6 万。</li>
+        <li><b>非平稳</b>：用户兴趣、内容供给每天都在变，历史均值会过期。要么用滑动窗口，要么给旧观测打折（指数衰减）。</li>
+        <li><b>必须有护栏指标</b>：探索天然会推一些"模型不看好"的内容。护栏至少三条：负反馈率、人均时长、投诉率。任意一条越界就自动收缩探索比例。</li>
+      </ul>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>流量极小</b>：每天几千曝光，分到 20 个臂上每臂几百次，统计量根本不够，不如用规则 + 热门。</li>
+        <li><b>强合规/品牌约束</b>：政务、金融、医疗不能拿用户做探索，候选集合必须先被规则限定死。</li>
+        <li><b>环境稳定且有强先验</b>：如果历史数据已经明确某类内容就是好，探索纯属浪费曝光。</li>
+        <li><b>需要可复现的归因</b>：Bandit 的策略是随机的，实验复盘比固定分桶的 A/B 难得多。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>Bandit 解决的是"在不确定中分配曝光"。ε-greedy 最便宜、UCB 最确定、Thompson 最适合二值反馈。
+          它的真正难点不在算法，在<b>评估与护栏</b>：离线只能用 IPS 近似、方差极大，线上必须设探索上限和自动熔断。<b>没有护栏的 Bandit 等于拿用户体验做实验。</b></p>
+      </div>
+
+      <h2 id="cold"><span class="kicker">T2-8 · COLD START</span>冷启动：三类场景与一张放量判定表</h2>
+      <p class="lead">冷启动不是"用一个模型解决"，而是三套不同的问题：新用户没有行为、新物品没有曝光、新系统没有数据。混在一起讲，永远讲不清。</p>
+
+      <h3>① 解决什么问题</h3>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>新用户</h4>
+          <p>没有行为序列，个性化模型无从下手。项目一里新用户（注册 &lt; 7 天）CTR <b>14.68%</b>，反而高于老用户的 13.82%——说明"热门 + 多样性"的兜底并不差，冷启的第一原则是<b>别急着个性化</b>。</p>
+        </div>
+        <div class="card accent">
+          <h4>新物品</h4>
+          <p>没有曝光就没有样本，没有样本就永远排不上。这是"冷启死锁"。项目一新鲜度数据显示：当天内容 CTR <b>15.95%</b>，30 天以上只有 <b>10.74%</b>——新内容有时效红利，放量必须快。</p>
+        </div>
+        <div class="card accent">
+          <h4>新系统</h4>
+          <p>没有日志、没有画像、没有模型。此时最靠谱的是"规则 + 热门 + 跨域迁移"，而不是先训一个深度模型。</p>
+        </div>
+      </div>
+
+      <h3>② 核心结构</h3>
+      <p><b>新用户：先粗后细。</b>① 注册信息（年龄、性别、地域、设备）→ 映射到先验兴趣分布；② 热门兜底（保证基线体验）；③ 强制多样性（前 10 条至少覆盖 3~4 个类目），用少量曝光换画像；④ 前 10~20 次交互作为 bandit 探索窗口，快速收敛。</p>
+      <p><b>新物品：内容 + 作者 + 流量池。</b>① 内容向量（标题、封面、ASR 文本 → embedding）；② 作者画像（历史粉丝画像、类目分布）做迁移；③ 相似物品借流量（内容最近邻）；④ 流量池逐级放量。</p>
+      <p><b>新系统：规则 + 热门 + 迁移。</b>先用运营规则保证"不出错"，用热门保证"有东西看"，同时用其他域的行为做迁移学习（如从图文域迁到视频域），积累到十万级样本再上模型。</p>
+
+      <div class="chart">
+        <svg viewBox="0 0 900 260" role="img" aria-label="流量池逐级放量">
+          <g font-family="Inter, PingFang SC, Microsoft YaHei, sans-serif">
+            <polygon points="30,40 250,40 225,88 55,88" fill="#eef0ff" stroke="#c7d2fe"></polygon>
+            <text x="140" y="62" text-anchor="middle" font-size="12.5" font-weight="700" fill="#312e81">流量池 1%</text>
+            <text x="140" y="80" text-anchor="middle" font-size="10.5" fill="#475467">≈ 3,000 曝光 / 天</text>
+
+            <polygon points="55,96 225,96 205,144 75,144" fill="#e6f7f4" stroke="#a7ded6"></polygon>
+            <text x="140" y="118" text-anchor="middle" font-size="12.5" font-weight="700" fill="#115e59">流量池 5%</text>
+            <text x="140" y="136" text-anchor="middle" font-size="10.5" fill="#475467">≈ 1.5 万曝光</text>
+
+            <polygon points="75,152 205,152 185,200 95,200" fill="#fef6e7" stroke="#f7e3b5"></polygon>
+            <text x="140" y="174" text-anchor="middle" font-size="12.5" font-weight="700" fill="#7c4a05">流量池 20%</text>
+            <text x="140" y="192" text-anchor="middle" font-size="10.5" fill="#475467">≈ 6 万曝光</text>
+
+            <polygon points="95,208 185,208 168,246 112,246" fill="#feeceb" stroke="#fbd0cd"></polygon>
+            <text x="140" y="228" text-anchor="middle" font-size="12" font-weight="700" fill="#7f1d1d">全量</text>
+
+            <g font-size="11.5" fill="#475467">
+              <text x="280" y="58">判据：CTR ≥ 同类目基准 × 0.90，完播 ≥ 基准 × 0.95</text>
+              <text x="280" y="78" fill="#b91c1c">否决线：负反馈 &gt; 基准 × 1.2 —— 直接回退，不再放量</text>
+              <text x="280" y="118">判据：CTR ≥ 基准 × 0.95，完播 ≥ 基准 × 0.98</text>
+              <text x="280" y="138" fill="#b91c1c">否决线：负反馈 &gt; 基准 × 1.1</text>
+              <text x="280" y="174">判据：CTR ≥ 基准 × 1.00，完播 ≥ 基准 × 1.00</text>
+              <text x="280" y="194" fill="#b91c1c">否决线：负反馈 &gt; 基准 × 1.05</text>
+              <text x="280" y="228">判据：连续 7 天不低于基准，进入常态监控</text>
+            </g>
+            <text x="30" y="20" font-size="11.5" fill="#667085">每一级都要满足"样本量足够"才做判定，否则就是拿噪声做决策。</text>
+          </g>
+        </svg>
+        <div class="cap"><b>图 7</b> · 流量池逐级放量。曝光量按"日曝光 30 万"的平台折算，判定阈值随业务调整（经验值）。</div>
+      </div>
+
+      <p><b>放量判定表（可直接抄成 SOP）：</b></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>池位</th><th>累计曝光（经验值）</th><th>最短观察</th><th>CTR 门槛</th><th>完播门槛</th><th>负反馈门槛</th><th>样本量是否够</th></tr></thead>
+          <tbody>
+            <tr><td>1%</td><td>3,000</td><td>24 小时</td><td>≥ 基准 × 0.90</td><td>≥ 基准 × 0.95</td><td>≤ 基准 × 1.2</td><td>只能判断"是否明显崩"，不能判断优劣</td></tr>
+            <tr><td>5%</td><td>15,000</td><td>48 小时</td><td>≥ 基准 × 0.95</td><td>≥ 基准 × 0.98</td><td>≤ 基准 × 1.1</td><td>可判断约 1.5 个百分点以上的差异</td></tr>
+            <tr><td>20%</td><td>60,000</td><td>72 小时</td><td>≥ 基准 × 1.00</td><td>≥ 基准 × 1.00</td><td>≤ 基准 × 1.05</td><td>可判断 0.5~1 个百分点的差异</td></tr>
+            <tr><td>全量</td><td>—</td><td>持续 7 天</td><td>不低于基准</td><td>不低于基准</td><td>不高于基线</td><td>进入常态监控，按天看分位</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">样本量参考：以项目一整体 CTR 13.82% 为基准，用 16·p(1−p)/Δ² 估算，判定 1 个百分点差异每组约需 1.9 万曝光，判定 0.5 个百分点约需 7.6 万。所以 1% 池子（几千曝光）<b>在统计上不足以支持"优劣"判断，只能用来"排雷"</b>——这是很多团队做错的地方。</p>
+      <p>还要按自己的规模折算一遍。上表的曝光量对应"日曝光 30 万"的平台；项目一 30 天全量只有 317,866 次曝光，平均约 1.06 万/天，同样 1% 的池子一天只有一百多次曝光，得跑几周才凑够判定样本。<b>小平台做冷启最现实的约束不是算法，是"等不起"</b>——所以更依赖内容侧的先验（作者画像、类目基线）来减少需要试错的次数。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <ul class="checklist">
+        <li><b>时效 vs 体验</b>：新内容当天 CTR 15.95%、30 天后 10.74%，红利窗口只有几天。放量太慢等于浪费内容；放量太快等于拿用户试错。折中做法是"小池快速排雷 + 大池慢速验证"。</li>
+        <li><b>依赖内容质量</b>：新物品冷启靠内容向量，而内容向量来自标题/封面。标题党会污染整个冷启通道——它们能骗到点击，但完播和负反馈会很差，最后把"新内容"这个池子的整体权重拉低。</li>
+        <li><b>池间竞争</b>：多个新物品同时抢同一批探索流量，会互相稀释样本，导致每个都"样本不足"。需要给流量池设总量上限和配额。</li>
+        <li><b>回退成本</b>：放量到 20% 才发现负反馈超标，已经损伤了一批用户体验。所以否决线必须前置，且自动化。</li>
+      </ul>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>内容供给不足、头部稳定</b>：每天只新增几条内容时，没必要建流量池，规则扶持即可。</li>
+        <li><b>没有内容理解能力</b>：拿不到可靠的文本/图像向量，"内容相似"其实是随机，冷启会变成"随机推"。</li>
+        <li><b>强监管业务</b>：政务、医疗、金融的新内容必须人审后再放量，不能自动化探索。</li>
+        <li><b>负反馈信号缺失</b>：没有"不感兴趣/划走"这类信号时，你只能看到点击，无法判断冷启是否伤体验。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>新用户先粗后细（注册信息 + 热门 + 多样性 + 少量探索），新物品靠内容向量 + 作者迁移 + 流量池放量，新系统靠规则 + 热门 + 迁移。
+          放量的核心不是"分几档"，而是<b>每一档的判定阈值和样本量是否匹配</b>：1% 池只能排雷，不能判优劣。</p>
+      </div>
+
+      <h2 id="compress"><span class="kicker">T2-9 · COMPRESS</span>蒸馏、量化与压缩：把精排的能力塞进粗排</h2>
+      <p class="lead">粗排的候选是千级，精排是百级，两者的延迟预算只差一倍——但模型复杂度差了一个数量级。中间的差额，靠蒸馏和压缩补。</p>
+
+      <h3>① 解决什么问题</h3>
+      <p>三个约束同时存在：<b>算力</b>（粗排 10~20ms 要打上千条）、<b>内存</b>（embedding 表动辄几十 GB）、<b>成本</b>（GPU 推理按 QPS 计费）。蒸馏解决"能力迁移"，量化解决"存储与带宽"，剪枝解决"结构冗余"。</p>
+
+      <h3>② 核心结构</h3>
+      <div class="formula">
+L = (1−α)·CE( y, p<sub>s</sub> ) + α·T²·KL( softmax(z<sub>t</sub>/T) ‖ softmax(z<sub>s</sub>/T) )
+<span class="note">p_s = 学生模型的输出；z_t、z_s = 教师/学生的 logit；T = 温度（常用 2~10，经验值），温度越高软标签越平滑，越能暴露"教师认为的相似类别"；α = 软标签权重；T² 是缩放因子，因为温度升高会让梯度变小，乘回去保持量级。CE 项保留真实标签，防止学生只学教师的偏差。</span>
+      </div>
+      <p><b>为什么粗排要蒸馏？</b>因为粗排和精排的目标不完全一样：精排要"排得准"，粗排要"别把好的筛掉"（更接近 Recall@K 的语义）。直接用精排的硬标签训学生，学生会学到精排的分数尺度，但学不到"哪些候选难分"。软标签里带着教师的<b>相对置信度</b>，正好补这块信息。工程上更常用的是<b>排序蒸馏</b>：让学生保持教师对候选对的相对顺序（pairwise / listwise loss），效果通常比纯 logit 匹配更稳。</p>
+      <div class="formula">
+对称量化（INT8）： x̂ = s · round( x / s ) ，  s = max|x| / 127
+量化误差上界： |x − x̂| ≤ s / 2
+<span class="note">s = 缩放因子（scale），按 per-channel 或 per-tensor 计算；127 是 int8 的上界；round 是四舍五入。误差上界说明：动态范围越大，单点误差越大——这就是"长尾特征"在 INT8 下更受伤的原因。</span>
+      </div>
+      <p><b>量化的三条路线：</b>① FP32 → FP16，几乎无损，内存和带宽直接减半，是所有推理的第一步；② INT8 训练后量化（PTQ），需要 500~1000 条校准样本（经验值）估 scale，用 KL 散度或 MSE 最小化选阈值；③ 量化感知训练（QAT），在训练时插入伪量化节点，用 STE（直通估计）传梯度，精度最好但成本最高。</p>
+      <p><b>剪枝与 embedding 压缩：</b>结构化剪枝按通道裁（对推理友好），非结构化剪枝稀疏度高但需要专用 kernel。embedding 表通常用四种手段：低频 ID 哈希到同一桶、低秩分解（大矩阵拆两个小矩阵）、向量量化（PQ，乘积量化）、多表共享。</p>
+
+      <h3>③ 代价与工程约束</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>手段</th><th>收益</th><th>风险点</th><th>怎么验</th></tr></thead>
+          <tbody>
+            <tr><td>知识蒸馏</td><td>小模型逼近大模型，粗排 Recall 提升</td><td>容量差距大时学生学不动；软标签带教师的偏差</td><td>对比同容量直接训练 vs 蒸馏，看 Recall@K 与校准</td></tr>
+            <tr><td>FP16</td><td>内存/带宽 −50%，几乎无损</td><td>极小概率数值溢出（logit 很大时）</td><td>逐层比对 max abs error</td></tr>
+            <tr><td>INT8 PTQ</td><td>内存 −75%，吞吐 +2~4 倍（经验值）</td><td>长尾 embedding 误差大；AUC 掉点；概率偏移</td><td>校准集上看 AUC、LogLoss、pCTR 均值变化</td></tr>
+            <tr><td>INT8 QAT</td><td>精度接近 FP32</td><td>训练成本高、工程改造大</td><td>同上，且要看训练稳定性</td></tr>
+            <tr><td>剪枝</td><td>参数减少，延迟下降</td><td>结构化剪枝可能剪掉关键通道</td><td>逐步剪 + 每步微调，看验证集</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout danger">
+        <p><b>INT8 在 CTR 模型上最危险的地方不是 AUC，是校准。</b>项目一里 DIN 的预测均值已经是 0.1527（真实 0.1378，高估 10.8%），量化会再引入一个<b>系统性偏移</b>——因为 softmax/sigmoid 前的 logit 被截断到固定范围，尾部样本会被压平。
+          结果可能是 AUC 只掉 0.001，但 pCTR 均值漂 5%，eCPM 直接算错。<b>上线前必须同时看三件事：AUC、LogLoss、预测均值 vs 真实 CTR。</b></p>
+      </div>
+      <p>另一个常被忽略的风险：<b>embedding 量化对长尾 ID 的伤害远大于头部</b>。头部 ID 出现几万次，量化误差在训练中会被平均掉；长尾 ID 只出现几次，一个量化台阶就是它全部的表示。所以工业界常见做法是"头部 FP16、长尾 INT8"或者干脆对 embedding 表不做量化，只量化 MLP 部分。</p>
+
+      <h3>④ 什么时候不该用</h3>
+      <ul class="checklist">
+        <li><b>候选只有几百条</b>：粗排本身就可以省掉，直接精排，没必要蒸馏。</li>
+        <li><b>模型参数量 &lt; 1M</b>：量化的收益主要是内存带宽，小模型本来就不受带宽限制。</li>
+        <li><b>AUC 已在数据上限附近</b>：项目一 0.858 已经接近这份仿真数据的信息上限，蒸馏/量化的目标是"保效果、降成本"，别指望它涨点。</li>
+        <li><b>没有校准能力</b>：任何压缩都会动概率分布，没有校准流程就不要上线到 eCPM 链路。</li>
+      </ul>
+
+      <div class="callout tip">
+        <p><b>本节小结：</b>蒸馏是"把教师的相对置信度迁给学生"，粗排用它是因为粗排要的是"别漏"而不是"排得准"；量化是"用更少的位宽换带宽"，FP16 几乎无损、INT8 要校准。
+          记住一条：<b>压缩的风险不在 AUC，在校准</b>——上线前必须看预测均值有没有漂。</p>
+      </div>
+
+      <h2 id="quiz"><span class="kicker">CHECK</span>自测：10 道题，答得上才算真懂</h2>
+      <p class="small">先自己说一遍，再展开对照。每题答案都按"结论 + 原因 + 数字/例子"组织，面试时照这个结构答最省时间。</p>
+
+      <details class="qa">
+        <summary>Q1：Mean Pooling 到底错在哪？DIN 用注意力具体改了什么？为什么它进不了召回层？</summary>
+        <div class="ans">
+          <p><b>结论：</b>错在"用户表示与候选无关"，DIN 把用户表示改成候选的函数，代价是每候选算一遍，因此只能待在精排。</p>
+          <p><b>原因：</b>池化把 L 条行为压成一个固定向量 v_u，所有候选共用；兴趣多峰时会被平均成"中间向量"；L 越大单条行为的权重越小（L=1000 时 0.1%）。DIN 用 <code>a_j = softmax(MLP([e_j, e_A, e_j⊙e_A]))</code> 在序列维度分配权重，<code>v_u(A)=Σ a_j e_j</code>，query 是候选、key/value 是历史行为。</p>
+          <p><b>数字：</b>复杂度 O(N<sub>cand</sub>·L·(d+d²))。N=100、L=50、d=64 时已经是百万级乘加；召回层候选是 10<sup>5</sup> 级，直接爆炸。项目一 DIN 从 0.8520 涨到 0.8584（+0.0064），因为 49.19% 的曝光序列长度为 0、人均只有 1.16 条。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q2：DIEN 的 aux loss 是干什么的？去掉它会怎样？</summary>
+        <div class="ans">
+          <p><b>结论：</b>aux loss 给 GRU 的中间兴趣状态提供稠密监督；去掉它，中间状态只靠最终 CTR 一个标量回传，基本学不出来。</p>
+          <p><b>原因：</b>CTR 标签稀疏且延迟，梯度从最后一层传到 GRU 的每一步已经很弱。DIEN 用"第 t 个兴趣状态能否预测第 t+1 个行为"作为辅助二分类任务，把监督信号直接打到每个时间步上。正例是真实的下一个行为，负例是随机采样物品。</p>
+          <p><b>数字/例子：</b>项目一人均序列 1.16，L=1 时没有"下一个行为"，aux loss 根本无法构造——这也是 DIEN 在项目一没有落地价值的原因之一。真实业务里序列要 ≥ 5 条，aux loss 才有意义。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q3：SIM 的 GSU 会带来什么损失？k 怎么选？为什么说它"不是更聪明，而是更便宜"？</summary>
+        <div class="ans">
+          <p><b>结论：</b>GSU 是召回式的粗筛，必然漏掉一部分真正相关的行为；k 在"覆盖率"和"延迟"之间取折中；它换的是可计算性，不是建模能力。</p>
+          <p><b>原因：</b>硬 GSU 依赖类目/关键词倒排，软 GSU 依赖画像向量内积。两者都是"用便宜信号近似相关性"，与最终的候选-行为注意力不是同一个目标函数，所以存在系统性偏差。ESU 只能在剩下的 k 条里挑。</p>
+          <p><b>数字：</b>L=10<sup>4</sup>、N=100、d=64 时全量注意力约 6.4×10<sup>7</sup> 次乘加；k=200 时降到 1.28×10<sup>6</sup>，差 50 倍。k 的常用区间 100~200（经验值）：太小会漏，太大会吃掉延迟收益。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q4：LightGCN 为什么敢去掉特征变换 W 和 ReLU？项目一为什么明确不上图模型？</summary>
+        <div class="ans">
+          <p><b>结论：</b>因为推荐图节点是纯 ID embedding，没有图像那样的语义输入，W 只增加参数和训练难度；项目一不上图是因为"规模小 + 共现已被覆盖 + 收益抵不过复杂度"。</p>
+          <p><b>原因：</b>LightGCN 只做对称归一化的邻域聚合 <code>e_u^(k+1)=Σ 1/√(|N(u)||N(i)|)·e_i^(k)</code>，再把各层表示等权平均作为最终表示。去掉非线性的依据是消融实验（公开资料口径）。</p>
+          <p><b>数字：</b>项目一 5,000 物品、人均交互 1.16，ItemCF 的 Recall@100 只有 4.12%，而双塔已经 11.29%——瓶颈是内容匹配不是高阶关联。上图的代价是图存储 + 采样 + 天级重训 + embedding 索引四套设施，收益上限却受限于整体 AUC 0.858 的天花板。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q5：ESMM 为什么能解决样本选择偏差？公式怎么写？它的假设有什么问题？</summary>
+        <div class="ans">
+          <p><b>结论：</b>它把损失搬到全曝光空间，用 <code>pCTCVR = pCTR × pCVR</code> 让 CVR 塔借到全量样本的梯度。</p>
+          <p><b>原因：</b>CVR 只在点击样本上有标签，但点击样本是 CTR 模型筛过的，分布≠全曝光分布。ESMM 不直接拟合 pCVR，而是拟合 pCTCVR（全曝光上有标签），两个损失都定义在全曝光 D 上：<code>L=Σ[ℓ(y_ctr,pCTR)+ℓ(y_ctcvr,pCTCVR)]</code>。</p>
+          <p><b>问题：</b>它假设给定特征下 CTR 与 CVR 条件独立，实际不成立（想点的人往往也更可能转化）。所以 pCVR 不能当严格概率用。<b>例子：</b>项目一 DIN 的 pCTR 均值 0.1527 vs 真实 0.1378，已经高估 10.8%，再叠一个不独立的 ESMM，eCPM 会系统性偏高。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q6：MMOE 和 PLE 的区别到底是什么？给你两个任务，怎么选结构？</summary>
+        <div class="ans">
+          <p><b>结论：</b>差在"expert 是否专属"。MMOE 全部共享、靠 gate 分化；PLE 增加任务专属 expert，只让共享 expert 学共性。</p>
+          <p><b>原因：</b>MMOE 的 <code>y_k = h_k(Σ g_ki(x)·E_i(x))</code> 里所有 expert 都参与所有任务的加权，任务冲突时仍被迫共享；PLE 的 gate 只在"共享 + 本任务专属"上做 softmax，天然隔离。</p>
+          <p><b>怎么选：</b>高相关低冲突 → Shared Bottom（最省参数）；高相关高冲突 → MMOE；低相关高冲突 → PLE 或直接拆两个模型。验证方法：比较多任务 vs 单任务时各任务 AUC，出现"一个涨一个跌"就是跷跷板，直接上 PLE。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q7：生成式推荐能不能替代精排？给出三条硬约束。</summary>
+        <div class="ans">
+          <p><b>结论：</b>截至教程编写时不能。<b>它在工业界仍以实验/局部场景为主</b>（召回、兴趣探索、内容理解），不是默认替换精排。</p>
+          <p><b>三条约束：</b>① 延迟——生成 K 个 token 要 K 次前向，beam search 再乘宽度，比 ANN 内积检索慢 2~3 个数量级；② 不可控——生成的是 ID，无法硬保证不出已看/不合规内容，还要再加过滤；③ 无法算 eCPM——没有可校准的 pCTR，广告竞价用不了。</p>
+          <p><b>例子：</b>项目一只有 5,000 个物品、人均序列 1.16，ID embedding 表就够用，RQ-VAE 的压缩收益几乎为零；而它在冷启和长尾上的价值，需要"物品数上百万 + 长序列"才能体现。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q8：LLM 放在推荐链路的哪个位置最合适？哪里绝对不能放？</summary>
+        <div class="ans">
+          <p><b>结论：</b>最合适是离线的语义生产者（打标、embedding、冷启画像）和低频对话入口；最不能放的是在线逐候选精排打分。</p>
+          <p><b>原因：</b>精排预算 30~60ms、要打 300 条候选，LLM 单次即使 200ms，300 条就是 60 秒；成本按 token 计费，在线按 QPS 乘 token 是持续性大钱；输出不稳定，无法做严格概率校准。</p>
+          <p><b>例子：</b>把 LLM 产出的类目/摘要离线写入特征库，在线只查表，延迟增加接近 0；用 LLM 做教师蒸馏到双塔，可以把语义能力压进毫秒级模型。反过来，让 LLM 直接输出 pCTR 去乘 bid，是典型的误用。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q9：UCB 和 Thompson Sampling 的核心差异？为什么 Bandit 的离线评估特别难？</summary>
+        <div class="ans">
+          <p><b>结论：</b>UCB 用"置信上界"确定性地奖励探索少的臂；Thompson 从后验分布采样，按不确定性自然地分配探索。离线的难在于"日志里没有你要试的臂"。</p>
+          <p><b>公式：</b>UCB 选 <code>argmax[μ̂_a + c√(ln t / n_a)]</code>；Thompson 从 <code>Beta(α_a, β_a)</code> 采样并选最大，α 累计点击+1、β 累计未点击+1。</p>
+          <p><b>原因：</b>离线日志由旧策略产生，新策略想探索的臂可能零曝光，只能用 IPS/DR 做反事实估计，而 IPS 的方差随策略差异急剧变大。<b>数字：</b>基准 CTR 13.82% 时，判定 1 个百分点差异每组约需 1.9 万曝光（16·p(1−p)/Δ²），小流量根本测不出来——所以线上必须设探索上限和护栏熔断。</p>
+        </div>
+      </details>
+
+      <details class="qa">
+        <summary>Q10：粗排为什么要蒸馏？INT8 量化在 CTR 模型上最容易出什么问题？</summary>
+        <div class="ans">
+          <p><b>结论：</b>粗排要的是"别漏"而不是"排得准"，软标签能传递教师对候选对的相对置信度；INT8 最危险的不是 AUC 掉点，而是概率校准漂移。</p>
+          <p><b>原因：</b>蒸馏损失 <code>L=(1−α)CE + αT²KL</code>，温度 T 让软标签平滑，暴露"教师认为相似"的信息；排序蒸馏则直接约束候选对的相对顺序，通常比 logit 匹配更稳。INT8 用 <code>x̂=s·round(x/s)</code>，误差上界 s/2，动态范围越大单点误差越大，长尾 ID 受伤最重。</p>
+          <p><b>数字：</b>项目一 DIN 的 pCTR 均值 0.1527，真实 0.1378（高估 10.8%）。量化再引入系统性偏移后，可能 AUC 只掉 0.001 而 pCTR 均值漂 5%——上线前必须同时看 AUC、LogLoss、预测均值三件套。</p>
+        </div>
+      </details>
+
+      <p class="small">如果 Q1、Q5、Q7、Q10 能不看稿讲完，这一页的核心就掌握了：你既能说出每个模型补的洞，也能说出它的账。</p>
+
+      <div class="pager">
+        <a href="industry.html"><span>上一篇</span><b>T1 · 行业与商业全景</b></a>
+        <a class="next" href="interview.html"><span>下一篇</span><b>04 · 面试拷问与术语速查 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

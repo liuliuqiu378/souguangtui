@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 1 章 · 搜广推全景、概念体系与数据</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="basics" data-title="第 1 章 · 全景 / 概念 / 数据">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <h1>第 1 章：先把话说清楚</h1>
+      <p class="lead">这一章不碰模型。我们要解决三件事：这些词到底指什么、一个推荐系统由哪几块拼起来、以及数据到底长什么样。把这三件事搞明白，后面看论文和代码才不会飘在空中。</p>
+
+      <div class="toc">
+        <b>本章目录</b>
+        <ol style="list-style:none;padding-left:6px">
+          <li><a href="#primer">0.　读前补课：十个词，看懂后面所有章节</a></li>
+          <li><a href="#ch1">1.1　搜索、广告、推荐：同一条流水线，三种生意</a></li>
+          <li><a href="#ch2">1.2　钱是怎么进来的：eCPM 与计费方式</a></li>
+          <li><a href="#ch3">1.3　岗位地图：团队里谁在干什么</a></li>
+          <li><a href="#ch4">1.4　指标体系：从曝光到留存的四层漏斗</a></li>
+          <li><a href="#ch5">2.1　四个基本对象：用户、物品、上下文、行为</a></li>
+          <li><a href="#ch6">2.2　样本与标签：模型到底在学什么</a></li>
+          <li><a href="#ch7">2.3　为什么必须分层：召回、粗排、精排、重排</a></li>
+          <li><a href="#ch8">2.4　评估：离线指标与线上指标的鸿沟</a></li>
+          <li><a href="#ch9">3.1　一条日志的旅程：从埋点到特征</a></li>
+          <li><a href="#ch10">3.2　特征工程：把业务知识塞进模型</a></li>
+          <li><a href="#ch11">3.3　三个必须提前知道的坑</a></li>
+          <li><a href="#qa">自测：五道题</a></li>
+        </ol>
+      </div>
+
+      <h2 id="primer"><span class="kicker">0 · PRIMER</span>读前补课：十个词，看懂后面所有章节</h2>
+      <p class="lead">如果你对下面十个词里有三个以上说不清，先花十分钟看这一节；都能用自己的话讲明白，就直接跳到 1.1。
+        这里不追求严谨定义，只求你先有一个"能往下读"的抓手——每个词的严谨版本，后面的章节都会补。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>词</th><th>一句人话</th><th>在系统里对应什么</th><th>不懂会卡在哪</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>样本 / 标签</b></td>
+              <td>一行"某人在某时看到某内容、后来点没点"的记录；"点没点"就是标签。</td>
+              <td>日志表里的一行；标签是模型要预测的那个 0/1。</td>
+              <td>看不懂 2.2 的"样本怎么造"，也不知道模型到底在学什么。</td>
+            </tr>
+            <tr>
+              <td><b>特征</b></td>
+              <td>把一行日志里"可能有用的信息"翻译成数字，比如年龄 25、品类=游戏、历史点击率 0.12。</td>
+              <td>模型输入的那几十到几百列数字。</td>
+              <td>3.2 特征工程会像一张没有上下文的清单。</td>
+            </tr>
+            <tr>
+              <td><b>One-hot</b></td>
+              <td>给每个类别发一个"专属座位"：是游戏就在游戏那一位写 1，其余全 0。</td>
+              <td>最原始的类别特征编码；物品多时维度爆炸、几乎全是 0。</td>
+              <td>不理解为什么需要 embedding，也不理解稀疏特征为什么难训。</td>
+            </tr>
+            <tr>
+              <td><b>Embedding</b></td>
+              <td>把"视频 ID"翻译成一串几十维的数字，让相似的视频数字也接近。</td>
+              <td>双塔、FM、DIN 的地基；召回和排序都靠它算相似度。</td>
+              <td>后面所有模型都会出现 e<sub>u</sub>、e<sub>i</sub>，你会不知道那是什么。</td>
+            </tr>
+            <tr>
+              <td><b>向量内积</b></td>
+              <td>两个向量对应位置相乘再相加；方向越一致，分数越高。</td>
+              <td>双塔召回的打分函数；"用户向量 × 物品向量"。</td>
+              <td>看不懂双塔为什么能召回，也不知道 ANN 在加速什么。</td>
+            </tr>
+            <tr>
+              <td><b>Sigmoid</b></td>
+              <td>把任意分数压到 0~1 之间，当成"发生的概率"。</td>
+              <td>CTR 模型的输出层：z 分 → pCTR。</td>
+              <td>不知道 0.18 为什么能叫"点击概率"，也不理解 LogLoss。</td>
+            </tr>
+            <tr>
+              <td><b>Softmax</b></td>
+              <td>把一组分数变成"加起来等于 1"的权重，分高的占比大。</td>
+              <td>DIN 的注意力权重、MMOE 的 gate、多分类输出。</td>
+              <td>DIN 的 a<sub>j</sub> 和 MMOE 的 gate 会看成天书。</td>
+            </tr>
+            <tr>
+              <td><b>训练 / 验证 / 测试</b></td>
+              <td>训练集学参数，验证集挑超参，测试集只在最后报一次成绩。</td>
+              <td>推荐里还要按时间切：用过去训练，预测未来。</td>
+              <td>不理解"过拟合"和"离线虚高"，线上出事也找不到原因。</td>
+            </tr>
+            <tr>
+              <td><b>损失函数</b></td>
+              <td>衡量"预测和真实差多远"的一个数；训练就是把它改小。</td>
+              <td>二分类常用 LogLoss；召回常用 Softmax/采样损失。</td>
+              <td>看模型对比表时，不知道为什么 AUC 之外还要看 LogLoss。</td>
+            </tr>
+            <tr>
+              <td><b>AUC / Recall@K</b></td>
+              <td>AUC：随机抽一个正样本和一个负样本，模型把正样本排前面的概率；Recall@K：该找到的里面，前 K 个找到了多少。</td>
+              <td>排序看 AUC/GAUC，召回看 Recall@K，两者不能互相替代。</td>
+              <td>会把"召回率 11%"和"召回层"混为一谈，也会误读模型好坏。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>把十个词串起来：一条样本的一生</h3>
+      <p>下面这条链路，就是后面两个项目每天在跑的事。你先记住"顺序"，细节后面再填：</p>
+      <div class="pipeline">
+        <div class="step"><b>① 请求</b><span>用户打开 App，带 userId、时间、设备</span></div>
+        <div class="step"><b>② 召回</b><span>100 万候选 → 300 个</span></div>
+        <div class="step"><b>③ 特征</b><span>年龄、品类、历史 CTR…</span></div>
+        <div class="step"><b>④ 打分</b><span>模型输出 z，再 sigmoid 成 pCTR</span></div>
+        <div class="step"><b>⑤ 排序</b><span>按分数取前 4 个展示</span></div>
+        <div class="step"><b>⑥ 日志</b><span>曝光、点击、完播写回日志表</span></div>
+      </div>
+      <p class="small">看不懂"召回"？先记一句：<b>召回就是从百万级大库里粗筛出几百个候选</b>，不追求排得准，只求别漏；后面的 2.3 会讲它为什么必须和排序分开。同理，<b>pCTR 就是"预测点击率"</b>，即模型认为这条内容会被点的概率。</p>
+      <div class="callout">
+        <p><b>一个具体例子（数字是示意）：</b>用户 A 晚上 9 点打开 App → 系统从 100 万条视频里召回 300 条 → 取出一条"游戏解说"，特征包括
+          <code>年龄=25</code>、<code>品类=游戏</code>、<code>该用户近 7 天 CTR=0.12</code> → 模型打分 <code>z=1.5</code> → <code>sigmoid(1.5)≈0.82</code>，
+          表示"预计 82% 会点" → 排到第 1 位 → 用户真的点了，日志记 <code>click=1</code>。</p>
+        <p>第二天，这行日志就变成了训练样本：特征是当时那一堆数字，标签是 <code>click=1</code>。模型学的就是"什么样的特征组合更容易出现 1"。
+          <b>所以推荐系统不是"理解内容"，而是"从历史里找可重复的模式"</b>——这句话能帮你读懂后面 80% 的模型动机。</p>
+      </div>
+
+      <h3>三个最小公式，够你看懂前六章</h3>
+      <div class="formula">
+        z = w<sub>0</sub> + w<sub>1</sub>x<sub>1</sub> + … + w<sub>n</sub>x<sub>n</sub>
+        <span class="note">线性打分：x 是特征，w 是模型学出来的权重，z 是原始分数。LR 的全部、DeepFM 的一部分，都是这个式子。</span>
+      </div>
+      <div class="formula">
+        p = 1 / (1 + e<sup>−z</sup>)
+        <span class="note">Sigmoid：把 z 压到 0~1。z=0 时 p=0.5；z 越大越接近 1。它不改变排序，只改变"分数怎么读成概率"。</span>
+      </div>
+      <div class="formula">
+        score(u, i) = u · v = Σ<sub>k</sub> u<sub>k</sub> · v<sub>k</sub>
+        <span class="note">内积：用户向量 u 和物品向量 v 逐维相乘再求和。双塔召回就是用这个分数从百万物品里找 topK；ANN 只是让这个"找"更快。</span>
+      </div>
+      <p class="small">看到不认识的符号，不用停：先查 <a href="interview.html#terms">术语速查（52 条）</a>，或者直接跳过公式看它前后的"输入是什么、输出是什么、解决什么问题"。<b>读懂动机比手推公式重要。</b></p>
+
+      <h2 id="ch1"><span class="kicker">1.1</span>搜索、广告、推荐：同一条流水线，三种生意</h2>
+      <p>先把三个词用一句人话说清楚：</p>
+      <div class="grid c3">
+        <div class="card accent">
+          <h4>搜索（Search）</h4>
+          <p><b>用户带着明确意图来，系统负责"找到"。</b>输入"附近修车"，系统要从亿级网页/商品/视频里找出最相关的，并按相关性排序。</p>
+          <p class="small">关键词：query、意图理解、相关性、时效性。</p>
+        </div>
+        <div class="card teal">
+          <h4>推荐（Recommendation）</h4>
+          <p><b>用户没说要什么，系统负责"猜你想要"。</b>打开首页，给你一屏内容，靠历史行为和人群画像推断兴趣。</p>
+          <p class="small">关键词：兴趣建模、探索、多样性、信息茧房。</p>
+        </div>
+        <div class="card amber">
+          <h4>广告（Advertising）</h4>
+          <p><b>在用户和内容之间插一条"要付费的候选"。</b>既要用户点，又要广告主划算，还要平台赚钱，三方博弈。</p>
+          <p class="small">关键词：出价、计费、eCPM、预算、归因。</p>
+        </div>
+      </div>
+
+      <p>它们的底层其实是同一个问题：<strong>在给定上下文下，从候选集合里挑出用户最可能满意的若干个，并排好序。</strong></p>
+      <div class="formula">
+        score(u, i, c) = f(用户特征, 物品特征, 上下文特征, 用户历史行为)
+        <span class="note">u=用户，i=候选物品/广告/文档，c=上下文（时间、地点、设备、query）。搜广推 90% 的模型都是在设计这个 f。</span>
+      </div>
+
+      <h3>差异到底在哪</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>维度</th><th>搜索</th><th>推荐</th><th>广告</th></tr></thead>
+          <tbody>
+            <tr><td>输入信号</td><td>强：query 明确</td><td>弱：只有行为和画像</td><td>query 或上下文 + 广告主出价</td></tr>
+            <tr><td>候选来源</td><td>倒排索引 + 向量检索</td><td>多路召回（CF/双塔/热门）</td><td>广告库 + 定向条件 + 预算约束</td></tr>
+            <tr><td>优化目标</td><td>相关性、满意度</td><td>时长、留存、GMV</td><td>平台收入 = eCPM 之和</td></tr>
+            <tr><td>核心难点</td><td>语义匹配、 query 改写</td><td>兴趣挖掘、冷启动、多样性</td><td>多方博弈、计费、归因、预算平滑</td></tr>
+            <tr><td>评估方式</td><td>NDCG、点击率、无结果率</td><td>CTR、时长、留存</td><td>CTR×出价、ROI、消耗完成率</td></tr>
+            <tr><td>代价不对称</td><td>搜不到很致命</td><td>推错一条还能滑走</td><td>广告主亏钱会直接停投</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <p><b>一句话记住：</b>搜索是"有答案的匹配"，推荐是"没有答案的猜测"，广告是"带着价格的推荐"。所以搜索重相关性，推荐重兴趣，广告重出价与转化。</p>
+      </div>
+
+      <h2 id="ch2"><span class="kicker">1.2</span>钱是怎么进来的：eCPM 与计费方式</h2>
+      <p>很多人学推荐不看广告，结果面试一问"广告排序和内容排序差在哪"就卡住。差别就在：<strong>广告的排序分里必须乘上钱</strong>。</p>
+
+      <div class="formula">
+        eCPM = pCTR × pCVR × 出价 × 1000
+        <span class="note">eCPM：千次展示期望收入。pCTR 是模型预估点击率，pCVR 是预估转化率，出价由广告主给。平台上所有候选广告按 eCPM 排序，取前几名展示。</span>
+      </div>
+
+      <p>由此引出几种常见计费方式，你可以把它们理解成"广告主为什么愿意付钱"：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>计费方式</th><th>全称</th><th>广告主为什么接受</th><th>平台要优化什么</th></tr></thead>
+          <tbody>
+            <tr><td><b>CPM</b></td><td>千次曝光付费</td><td>只想要品牌曝光</td><td>曝光量、可见性</td></tr>
+            <tr><td><b>CPC</b></td><td>按点击付费</td><td>只为真实兴趣买单</td><td>pCTR 预估要准</td></tr>
+            <tr><td><b>CPA</b></td><td>按转化（下单/注册）付费</td><td>只为结果买单</td><td>pCVR、归因链路</td></tr>
+            <tr><td><b>oCPX</b></td><td>目标转化出价</td><td>给个目标成本，平台自动出价</td><td>出价策略 + 转化预估 + 预算平滑</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <p><b>为什么 pCTR 估偏一点会亏很多钱？</b>假设 A 广告真实 CTR 2%、出价 1 元，B 广告真实 CTR 1%、出价 3 元。真实 eCPM 分别是 20 和 30，应该出 B。如果你把 A 的 CTR 高估到 5%，算出来 50，就会出 A——平台少赚，广告主也拿不到效果，双输。所以广告场景对<strong>校准</strong>（预测值要接近真实概率）的要求远高于纯内容推荐。</p>
+      </div>
+
+      <div class="calc" id="ecpm-calc">
+        <h4>动手拖一下：pCTR 估偏如何改变广告排序</h4>
+        <div class="hint">两条广告竞争同一个位置（为简化，假设 pCVR=1）。拖动滑块改变模型对广告 A 的 pCTR 预估，观察 eCPM 与最终展示结果的变化。</div>
+        <div class="calc-row">
+          <label for="bidA">广告 A 出价</label>
+          <input type="range" id="bidA" min="0.5" max="5" step="0.1" value="1">
+          <output id="outBidA">1.0 元</output>
+        </div>
+        <div class="calc-row">
+          <label for="ctrA">A 的 pCTR 预估</label>
+          <input type="range" id="ctrA" min="0.5" max="10" step="0.1" value="2">
+          <output id="outCtrA">2.0%</output>
+        </div>
+        <div class="calc-res">
+          <div class="calc-card" id="cardA">
+            <div class="t">广告 A · 出价 <span id="aBidTxt">1.0</span> 元 · 真实 CTR 2.0%</div>
+            <div class="e" id="aEcpm">20.0</div>
+            <div class="bar"><i id="aBar"></i></div>
+          </div>
+          <div class="calc-card" id="cardB">
+            <div class="t">广告 B · 出价 3.0 元 · 真实 CTR 1.0%</div>
+            <div class="e" id="bEcpm">30.0</div>
+            <div class="bar"><i id="bBar"></i></div>
+          </div>
+        </div>
+        <div class="calc-verdict" id="verdict"></div>
+      </div>
+
+      <h2 id="ch3"><span class="kicker">1.3</span>岗位地图：团队里谁在干什么</h2>
+      <p>搜广推不是一个算法岗包打天下，真实团队通常这样分工（不同公司叫法不同，但职责类似）：</p>
+      <div class="pipeline">
+        <div class="step"><b>数据/数仓</b><span>埋点、ODS→DWD→DWS、样本表</span></div>
+        <div class="step"><b>算法（召回）</b><span>多路召回、向量检索、索引</span></div>
+        <div class="step"><b>算法（排序）</b><span>特征、模型、多任务、重排</span></div>
+        <div class="step"><b>工程/架构</b><span>在线服务、特征服务、性能</span></div>
+        <div class="step"><b>策略/产品</b><span>指标、规则、实验、运营</span></div>
+      </div>
+      <p>面试 JD 里常见的表述，翻译过来是：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>JD 原话</th><th>实际要你干的事</th><th>对应本教程章节</th></tr></thead>
+          <tbody>
+            <tr><td>"负责召回/排序模型的迭代优化"</td><td>造特征、训模型、离线评估、推上线、看 A/B</td><td>第 2、3 章</td></tr>
+            <tr><td>"熟悉 CTR/CVR 预估"</td><td>会 FM/DeepFM/DIN/MMOE，懂校准与样本偏差</td><td>第 2 章</td></tr>
+            <tr><td>"有大规模数据处理经验"</td><td>写 Hive/Spark SQL，能处理亿级日志</td><td>第 1.4 节</td></tr>
+            <tr><td>"熟悉推荐系统架构"</td><td>讲得清召回→粗排→精排→重排，以及延迟预算</td><td>第 3 章</td></tr>
+            <tr><td>"有 A/B 实验经验"</td><td>会分流、算显著性、解释指标波动</td><td>第 3 章</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="ch4"><span class="kicker">1.4</span>指标体系：从曝光到留存的四层漏斗</h2>
+      <p>做推荐最怕"只看 CTR"。CTR 涨了但用户待得更短，是典型的坏迭代。指标要分四层看：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层级</th><th>指标</th><th>说明</th><th>怎么用</th></tr></thead>
+          <tbody>
+            <tr><td>系统层</td><td>曝光量、请求量、P99 延迟、错误率</td><td>系统是否健康</td><td>先排除故障再看效果</td></tr>
+            <tr><td>行为层</td><td>CTR、完播率、点赞率、评论率、负反馈率</td><td>单次交互质量</td><td>模型迭代最常用</td></tr>
+            <tr><td>消费层</td><td>人均时长、人均播放数、消费深度</td><td>一次会话的整体价值</td><td>防止"标题党式涨 CTR"</td></tr>
+            <tr><td>留存/商业层</td><td>次日留存、7 日留存、GMV、广告收入</td><td>长期价值</td><td>北极星指标，实验周期要够长</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout case">
+        <p><b>真实案例的味道：</b>某次把"点击"权重调高，CTR 涨了 6%，但人均时长跌了 3%。原因是模型学会了推"标题夸张、点进去就划走"的内容。后来把目标改成"有效播放（播放时长 &gt; 5 秒）"，CTR 只涨 2%，时长涨了 4%。</p>
+        <p>结论：<b>你优化什么，系统就变成什么。</b>指标设计本身就是产品设计。</p>
+      </div>
+
+      <h2 id="ch5"><span class="kicker">2.1</span>四个基本对象：用户、物品、上下文、行为</h2>
+      <p>无论多复杂的系统，数据都能归到这四类：</p>
+      <div class="grid c2">
+        <div class="card">
+          <h4>用户（User）</h4>
+          <p>静态属性：年龄、性别、城市、设备价位、注册时长。<br>
+             动态画像：兴趣标签、活跃度、消费能力、生命周期阶段。</p>
+          <p class="small">坑：用户画像更新有延迟，"昨天刚买冰箱"今天还在推冰箱。</p>
+        </div>
+        <div class="card">
+          <h4>物品（Item）</h4>
+          <p>内容属性：类目、时长、作者、发布时间、清晰度。<br>
+             统计属性：近 7 日 CTR、完播率、曝光量。<br>
+             语义属性：标题/正文 embedding、标签。</p>
+          <p class="small">坑：新物品没有统计属性，只能靠内容理解冷启动。</p>
+        </div>
+        <div class="card">
+          <h4>上下文（Context）</h4>
+          <p>时间（早/晚、工作日/周末）、地点、网络、设备、页面位置、query、进入路径。</p>
+          <p class="small">坑：上下文特征很容易"看起来有用"，其实只是在拟合时间段流量波动。</p>
+        </div>
+        <div class="card">
+          <h4>行为（Behavior）</h4>
+          <p>曝光、点击、播放、完播、点赞、评论、分享、负反馈、购买。行为序列是最有价值的特征来源。</p>
+          <p class="small">坑：只记录"点击"会丢掉大量负反馈信号，学会推用户讨厌的东西。</p>
+        </div>
+      </div>
+
+      <h2 id="ch6"><span class="kicker">2.2</span>样本与标签：模型到底在学什么</h2>
+      <p>推荐模型本质是个二分类器（或回归器）。一条训练样本通常是：</p>
+      <div class="formula">
+        样本 = (用户特征, 物品特征, 上下文特征) → label ∈ {0, 1}
+        <span class="note">label=1 表示这次曝光被点击/转化；label=0 表示曝光了但没点。注意：没曝光过的物品不能当负样本，因为你不知道用户会不会点。</span>
+      </div>
+
+      <h3>三种最常见的 label 定义错误</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>错误做法</th><th>后果</th><th>正确做法</th></tr></thead>
+          <tbody>
+            <tr><td>把所有未点击的物品都当负样本（包括没曝光的）</td><td>负样本分布和线上不一致，模型学到"冷门=负"</td><td>只用<strong>真实曝光且未点击</strong>的样本</td></tr>
+            <tr><td>用"是否下单"当 label，但训练样本只取点击过的</td><td>样本选择偏差（ESMM 要解决的问题）</td><td>全曝光样本训 CTR，点击样本训 CVR，或联合建模</td></tr>
+            <tr><td>随机切分训练/测试集</td><td>未来信息泄漏，离线指标虚高</td><td>按时间切分，且保证测试用户有历史</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <p><b>为什么"没曝光"不能当负样本？</b>因为曝光本身就是系统选择的结果。一个视频没被推给用户，不代表用户不喜欢它，可能只是它没进候选。把"没被推荐"当成"不喜欢"，模型会陷入自我强化：越不推越觉得差，越觉得差越不推。</p>
+      </div>
+
+      <h2 id="ch7"><span class="kicker">2.3</span>为什么必须分层：召回、粗排、精排、重排</h2>
+      <p>假设内容池 1000 万，用户每次请求要在 100ms 内返回 10 条。你不可能对 1000 万个候选逐个跑复杂模型——算不起。所以要分层，每层只做"在当前量级下性价比最高"的事。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>输入量级</th><th>输出量级</th><th>典型模型</th><th>关注点</th></tr></thead>
+          <tbody>
+            <tr><td>召回</td><td>10⁶ ~ 10⁷</td><td>10³ ~ 10⁴</td><td>ItemCF、双塔、热门、规则</td><td>别漏（Recall 优先），要快</td></tr>
+            <tr><td>粗排</td><td>10³ ~ 10⁴</td><td>10² ~ 10³</td><td>双塔、轻量 DNN、GBDT</td><td>粗筛，精度略低可接受</td></tr>
+            <tr><td>精排</td><td>10² ~ 10³</td><td>10 ~ 100</td><td>DeepFM、DIN、MMOE</td><td>准，特征最全</td></tr>
+            <tr><td>重排</td><td>10 ~ 100</td><td>10</td><td>规则 + MMR/DPP + 业务策略</td><td>多样性、打散、商业约束</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="chart" id="c-funnel"></div>
+      <div class="cap small">上图是项目一仿真的曝光→点击→完播→点赞漏斗。注意每一层的绝对量级差异，这就是为什么"分层"不是架构洁癖，而是算力约束下的必然选择。</div>
+
+      <div class="callout tip">
+        <p><b>面试常问："召回和排序为什么不用同一个模型？"</b><br>
+        标准答案包含三点：①候选量级不同，召回必须能在一二十毫秒内从百万级里筛，只能用双塔这种"用户向量与物品向量可离线预计算"的结构；②精排要用到用户-物品交叉特征，无法离线预计算，只能对少量候选算；③两层的评估目标不同，召回看"有没有把好东西捞进来"，排序看"捞进来的怎么排"。</p>
+      </div>
+
+      <h2 id="ch8"><span class="kicker">2.4</span>评估：离线指标与线上指标的鸿沟</h2>
+      <p>初学者最容易犯的错：离线 AUC 涨了 0.5%，就认为线上一定涨。现实是——<strong>不一定，而且经常不涨。</strong></p>
+
+      <h3>常用离线指标</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th>衡量什么</th><th>适用层</th><th>局限</th></tr></thead>
+          <tbody>
+            <tr><td><b>AUC</b></td><td>排序能力：随机取一正一负，正样本排在前面的概率</td><td>精排</td><td>对位置不敏感，不反映校准</td></tr>
+            <tr><td><b>LogLoss</b></td><td>预测概率与真实 label 的差距</td><td>精排/广告</td><td>受样本比例影响大</td></tr>
+            <tr><td><b>GAUC</b></td><td>按用户分组的 AUC 加权平均</td><td>精排</td><td>计算成本高，用户样本少时噪声大</td></tr>
+            <tr><td><b>Recall@K</b></td><td>Top-K 里命中了多少用户真正交互的物品</td><td>召回</td><td>K 的选择影响结论</td></tr>
+            <tr><td><b>NDCG@K</b></td><td>考虑排序位置的相关性</td><td>排序/重排</td><td>需要相关性分级标注</td></tr>
+            <tr><td><b>覆盖率/多样性</b></td><td>推荐结果是否集中、是否同质</td><td>召回/重排</td><td>和准确率天然冲突</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small">读表提醒：<b>Recall@K</b> 里的 recall 是"覆盖率"指标，和前面说的"召回层"不是一回事；两者中文都叫召回，看英文或上下文区分。</p>
+
+      <div class="callout danger">
+        <p><b>离线涨、线上不涨的六个常见原因（先记住，第 3 章展开）：</b></p>
+        <p>① 特征穿越：训练时用了未来信息，线上拿不到；② 样本偏差：训练分布和线上分布不一致；③ 位置偏差：离线 label 受展示位置影响；④ 链路不一致：离线特征口径和线上服务口径不同；⑤ 指标不代表业务：AUC 涨但 CTR 不涨；⑥ 实验设计有问题：分流不均或周期太短。</p>
+      </div>
+
+      <h2 id="ch9"><span class="kicker">3.1</span>一条日志的旅程：从埋点到特征</h2>
+      <p>先看真实的数据长什么样。下面是项目一里的一条曝光日志（已脱敏，来自仿真）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>user_id</th><th>req_seq</th><th>ts</th><th>item_id</th><th>position</th><th>hour_bucket</th><th>click</th><th>finish</th><th>like</th><th>play_ratio</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="tnum">26</td><td class="tnum">25</td><td>2026-09-04 05:28</td><td class="tnum">3203</td><td class="tnum">2</td><td class="tnum">5</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.0</td></tr>
+            <tr><td class="tnum">27</td><td class="tnum">13</td><td>2026-09-03 22:38</td><td class="tnum">354</td><td class="tnum">1</td><td class="tnum">1</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.0</td></tr>
+            <tr><td class="tnum">124</td><td class="tnum">5</td><td>2026-09-12 23:27</td><td class="tnum">2642</td><td class="tnum">1</td><td class="tnum">4</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.0</td></tr>
+            <tr><td class="tnum">184</td><td class="tnum">7</td><td>2026-09-18 17:09</td><td class="tnum">1524</td><td class="tnum">4</td><td class="tnum">3</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0</td><td class="tnum">0.0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">字段含义：<code>req_seq</code> 是用户第几次请求；<code>position</code> 是这次曝光在页面里的位置；<code>click/finish/like</code> 是 0/1 标签；<code>play_ratio</code> 是播放完成度。真实的日志还会有 request_id、device_id、推荐理由、实验号等几十个字段。</p>
+
+      <h3>数据是怎么流到模型的</h3>
+      <div class="pipeline">
+        <div class="step"><b>客户端埋点</b><span>曝光/点击/播放事件</span></div>
+        <div class="step"><b>消息队列</b><span>Kafka 削峰</span></div>
+        <div class="step"><b>数仓分层</b><span>ODS→DWD→DWS</span></div>
+        <div class="step"><b>样本表</b><span>join 特征 + label</span></div>
+        <div class="step"><b>训练</b><span>离线/近线</span></div>
+      </div>
+      <p>几个关键概念，用一句话解释：</p>
+      <ul>
+        <li><b>ODS</b>：原始日志，几乎是埋点长什么样就存什么样。</li>
+        <li><b>DWD</b>：清洗后的明细，一行一个事件，统一字段口径。</li>
+        <li><b>DWS</b>：按主题聚合，比如"用户近 7 日各品类点击次数"。</li>
+        <li><b>特征回填（backfill）</b>：给历史样本补上当时的特征值，注意只能用当时可得的数据。</li>
+      </ul>
+
+      <h2 id="ch10"><span class="kicker">3.2</span>特征工程：把业务知识塞进模型</h2>
+      <p>在深度模型时代，特征工程没有消失，只是从"手工交叉"变成了"提供好的原材料 + 让模型学交叉"。真实系统里，特征通常分五类：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类型</th><th>例子</th><th>怎么造</th><th>常见问题</th></tr></thead>
+          <tbody>
+            <tr><td>类别特征</td><td>品类、城市等级、设备型号</td><td>One-hot / Embedding / 哈希</td><td>高基数（如 item_id）导致稀疏</td></tr>
+            <tr><td>数值特征</td><td>年龄、时长、价格、CTR</td><td>分桶、归一化、log 变换</td><td>长尾分布，直接输入效果差</td></tr>
+            <tr><td>统计特征</td><td>近 7 日 CTR、完播率、曝光量</td><td>窗口聚合，注意时间边界</td><td><strong>最容易特征穿越</strong></td></tr>
+            <tr><td>序列特征</td><td>最近 10 次点击的品类</td><td>按时间倒序取最近 N 个</td><td>padding、截断、顺序错乱</td></tr>
+            <tr><td>交叉特征</td><td>用户兴趣 × 内容品类</td><td>显式交叉或交给 FM/DNN</td><td>维度爆炸、线下线上不一致</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>一个具体例子：<code>item_ctr_7d</code></h3>
+      <p>这个特征的含义是"该内容最近 7 天的点击率"。看起来简单，但有三个必须说清楚的口径：</p>
+      <div class="formula">
+        训练样本时间 T 的 item_ctr_7d = 该 item 在 [T-7d, T) 的点击数 / 曝光数
+        <span class="note">注意右端是开区间：不能包含 T 时刻及之后的数据，否则就是穿越。线上服务时，用 Redis 里最新的滚动统计值，允许有小延迟。</span>
+      </div>
+      <p>如果写成 <code>[T-7d, T]</code> 或"用全量数据算一个固定 CTR"，离线 AUC 会明显虚高，上线后立刻掉——因为线上拿不到未来的信息。</p>
+
+      <div class="callout case">
+        <p><b>为什么统计特征这么强？</b>因为它把"这个内容历史上受不受欢迎"直接告诉了模型，省去了从 ID embedding 里慢慢学的成本。但代价是：新内容没有统计值（冷启动），以及一旦口径错了就是灾难。工程上通常会给统计特征加"置信度"处理：曝光量小于阈值时向全局均值收缩。</p>
+        <div class="formula" style="margin-bottom:0">
+          ctr_smooth = (click + α·prior) / (impression + α)
+          <span class="note">α 是平滑强度（如 20），prior 是全局 CTR。样本少时更信先验，样本多时更信自身统计。</span>
+        </div>
+      </div>
+
+      <h2 id="ch11"><span class="kicker">3.3</span>三个必须提前知道的坑</h2>
+
+      <h3>坑 1：位置偏差（position bias）</h3>
+      <p>同一个内容放在第 1 位和第 4 位，点击率能差 2~3 倍。下面这张图是项目一仿真的真实结果：</p>
+      <div class="chart" id="c-position"></div>
+      <div class="cap small">位置越靠前，CTR 越高。这不是因为内容更好，而是因为用户更容易看到。如果模型把"位置"当成强特征，它就学会了"排在前面的好"，而不是"内容好"。</div>
+      <p><b>怎么处理：</b>训练时把 position 作为特征但在 serving 时置为固定值（如 1），或者用 position 作为偏置项单独建模（PBM 模型），或者对样本做逆倾向加权（IPS）。</p>
+
+      <h3>坑 2：特征穿越（leakage）</h3>
+      <p>最典型的三种：</p>
+      <ul>
+        <li>用包含当前样本的全量统计（比如用整个月的 CTR 算 7 日 CTR）。</li>
+        <li>用 label 派生出来的特征（比如"是否被推荐过"其实和 label 同源）。</li>
+        <li>用未来才产生的行为（比如用用户之后的点击来构造当前请求的序列）。</li>
+      </ul>
+      <p><b>怎么发现：</b>把可疑特征单独训练一个模型，如果 AUC 高得离谱（如 0.95+），先怀疑穿越；或者做"特征可用时间"审计，逐个确认线上能否在请求时刻拿到。</p>
+
+      <h3>坑 3：线下线上不一致</h3>
+      <p>常见来源：分桶边界不同（离线用等频、线上用等距）、缺失值填充不同（离线填 0、线上填 -1）、时间窗口不同（离线 T-7d 按自然日、线上按滚动 168 小时）、特征更新延迟。工程上的标准做法是<strong>特征只写一份代码，离线和在线共用同一套 transform 逻辑</strong>，并用一致性监控（同一 request_id 抽样比对离线值与在线值）。</p>
+
+      <div class="callout tip">
+        <p><b>本章自检：</b>如果你能不看笔记回答下面三个问题，就可以进入第 2 章——</p>
+        <p>① 为什么召回和排序必须分开？② 为什么"没曝光"不能当负样本？③ 离线 AUC 涨了，线上可能不涨的三个原因是什么？</p>
+      </div>
+
+      <h2 id="qa"><span class="kicker">SELF-CHECK</span>五道自测题</h2>
+      <details class="qa">
+        <summary>搜索、推荐、广告最本质的区别是什么？</summary>
+        <div class="ans"><p>输入信号的确定性不同：搜索有明确 query，推荐没有，广告在推荐的基础上叠加了广告主出价与计费约束。因此搜索重相关性、推荐重兴趣与探索、广告重 eCPM 与转化。三者共享"召回→排序→重排"的工程骨架。</p></div>
+      </details>
+      <details class="qa">
+        <summary>为什么广告排序要用 eCPM 而不是直接用 pCTR？</summary>
+        <div class="ans"><p>因为平台要在用户体验和收入之间平衡。只按 pCTR 排会优先展示"用户爱点但出价极低"的广告，平台不赚钱；按 eCPM = pCTR×pCVR×出价×1000 排，才能把"用户会点"和"广告主愿意付"结合起来。这也是为什么广告模型对校准要求更高。</p></div>
+      </details>
+      <details class="qa">
+        <summary>训练样本为什么必须按时间切分？</summary>
+        <div class="ans"><p>推荐系统的特征和用户行为都有强时间相关性。随机切分会让模型在训练时"看到未来"，离线指标虚高。按时间切分模拟真实上线场景：用过去预测未来。同时要注意测试用户必须有历史行为，否则评估的是冷启动而不是模型能力。</p></div>
+      </details>
+      <details class="qa">
+        <summary>召回层的核心指标为什么是 Recall 而不是 AUC？</summary>
+        <div class="ans"><p>召回的任务是"别把好东西漏掉"，它输出的候选会交给后面的排序层。只要好东西在候选里，排序层还有机会把它排上来；但如果召回没捞到，后面再强也没用。所以召回看 Recall@K、覆盖率、多样性，而不是逐条的打分准确性。</p></div>
+      </details>
+      <details class="qa">
+        <summary>如果一个特征离线 AUC 提升很大，你会先怀疑什么？</summary>
+        <div class="ans"><p>先怀疑特征穿越。检查它的统计窗口是否包含当前时刻之后的数据、是否由 label 派生、线上请求时刻能否真实拿到。其次检查样本分布是否因加入该特征而改变（比如只对有日志的物品有值，导致样本筛选偏差）。最后才考虑它是不是真的有效。</p></div>
+      </details>
+
+      <div class="pager">
+        <a href="index.html"><span>上一篇</span><b>← 学习总览与 8 周计划</b></a>
+        <a class="next" href="models.html"><span>下一篇</span><b>02 · 召回与排序模型演进 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/main.js"></script>
+<script>
+  Chart.funnel('#c-funnel', [
+    { name: '曝光', value: 317866 },
+    { name: '点击', value: 43933 },
+    { name: '完播', value: 25174 },
+    { name: '点赞', value: 5555 }
+  ], { height: 230, caption: '<b>图 1-1</b> 项目一仿真日志的消费漏斗（点击率 13.8%，完播/点击 57.3%）' });
+
+  Chart.bar('#c-position', [
+    { name: '第1位', rate: 0.1528, n: 79559 },
+    { name: '第2位', rate: 0.1414, n: 79757 },
+    { name: '第3位', rate: 0.1326, n: 79269 },
+    { name: '第4位', rate: 0.1259, n: 79281 }
+  ], { format: 'pct', height: 240, color: '#4f46e5',
+       caption: '<b>图 1-2</b> 位置偏差：第 1 位比第 4 位 CTR 高约 21%（同一批内容随机打散后的统计）' });
+
+  // eCPM 交互计算器：拖动滑块看 pCTR 预估怎么改变排序结果
+  (function () {
+    const bidA = document.getElementById('bidA');
+    const ctrA = document.getElementById('ctrA');
+    if (!bidA || !ctrA) return;
+    const B_BID = 3.0, B_CTR = 0.01, A_TRUE_CTR = 0.02;
+    const f1 = v => v.toFixed(1);
+
+    function render() {
+      const bid = +bidA.value;
+      const pctr = +ctrA.value / 100;
+      const aEcpm = pctr * bid * 1000;            // 排序用的预估值
+      const bEcpm = B_CTR * B_BID * 1000;         // 固定 30.0
+      const aTrue = A_TRUE_CTR * bid * 1000;      // A 的真实 eCPM
+      const mx = Math.max(aEcpm, bEcpm, 1);
+
+      document.getElementById('outBidA').textContent = f1(bid) + ' 元';
+      document.getElementById('outCtrA').textContent = f1(+ctrA.value) + '%';
+      document.getElementById('aBidTxt').textContent = f1(bid);
+      document.getElementById('aEcpm').textContent = f1(aEcpm);
+      document.getElementById('bEcpm').textContent = f1(bEcpm);
+      document.getElementById('aBar').style.width = (aEcpm / mx * 100) + '%';
+      document.getElementById('bBar').style.width = (bEcpm / mx * 100) + '%';
+
+      const aWin = aEcpm > bEcpm;
+      document.getElementById('cardA').classList.toggle('win', aWin);
+      document.getElementById('cardB').classList.toggle('win', !aWin);
+
+      const diff = aEcpm - bEcpm;
+      let msg;
+      if (Math.abs(diff) < 0.05) {
+        msg = '两者 eCPM 打平（' + f1(aEcpm) + '）。此时排序由第二条规则（质量分、相关性）决定，'
+            + '这也是为什么广告系统不能只看 eCPM。';
+      } else if (aWin) {
+        const over = pctr - A_TRUE_CTR;
+        if (over > 0.001) {
+          msg = '模型选 A：算出 eCPM ' + f1(aEcpm) + ' > B 的 ' + f1(bEcpm) + '。但 A 真实 CTR 只有 2.0%，'
+              + '真实 eCPM 仅 ' + f1(aTrue) + '——<b>高估 ' + f1(over * 100) + 'pp 就让平台每千次展示少赚 '
+              + f1(bEcpm - aTrue) + '</b>，这就是校准在广告里比在推荐里更致命的原因。';
+        } else if (over < -0.001) {
+          msg = '模型选 A：eCPM ' + f1(aEcpm) + ' > B 的 ' + f1(bEcpm) + '，排序结论正确；不过 A 的真实 CTR 是 2.0%，'
+              + '预估偏保守（真实 eCPM ' + f1(aTrue) + '），实际收益会比预测更高。';
+        } else {
+          msg = '模型选 A：eCPM ' + f1(aEcpm) + ' > B 的 ' + f1(bEcpm) + '，且预估贴近真实（真实 eCPM '
+              + f1(aTrue) + '），判断正确。';
+        }
+      } else {
+        msg = '模型选 B：A 的预估 eCPM 只有 ' + f1(aEcpm) + '，低于 B 的 ' + f1(bEcpm) + '。'
+            + '注意 A 的真实 eCPM 是 ' + f1(aTrue) + '——'
+            + (aTrue > bEcpm
+              ? '<b>这里模型低估了 A，等于把更赚钱的广告压掉了</b>（少赚 ' + f1(aTrue - bEcpm) + '）。'
+              : 'A 确实不如 B，判断正确。');
+      }
+      document.getElementById('verdict').innerHTML = msg;
+    }
+
+    bidA.addEventListener('input', render);
+    ctrA.addEventListener('input', render);
+    render();
+  })();
+</script>
+</body>
+</html>

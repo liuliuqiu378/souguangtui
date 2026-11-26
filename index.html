@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>搜广推算法：从 0 到能干活 · 学习总览</title>
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body data-page="index" data-title="学习总览">
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="crumb">搜广推 · 从 0 到能干活 / <span id="crumb"></span></div>
+      <div class="progress"><i id="progress-bar"></i></div>
+    </div>
+
+    <main class="content">
+      <section class="hero">
+        <h1>搜广推算法：从 0 入门，到能独立做一个推荐 / 广告系统</h1>
+        <p>不是论文翻译，也不是 API 调用合集。这份教程从"这个词是什么意思"讲起，一路讲到
+          召回怎么切、模型怎么选、特征怎么造、线上怎么扛住延迟、指标跌了怎么查，
+          最后用两个<strong style="color:#fff">数据全部仿真、结果可复现、经得住追问</strong>的项目把整条链路走完。</p>
+        <div class="tags">
+          <span>零基础可读</span><span>9 个章节</span><span>2 个完整项目</span>
+          <span>30+ 图表</span><span>60 道拷问</span><span>8 周计划</span>
+        </div>
+      </section>
+
+      <div class="callout">
+        <p><b>先说你最关心的三件事。</b></p>
+        <p>1）<b>能不能看懂？</b>——每个概念都先给一句人话定义，再给公式，再给"在系统里它到底出现在哪一步"。看不懂的地方，基本都配了图和例子。</p>
+        <p>2）<b>学完能不能干活？</b>——两个项目都是从"业务背景 → 数据长什么样 → 怎么建模 → 效果多少 → 线上怎么部署 → 被人追问怎么答"的完整闭环，不是跑个 demo 就结束。</p>
+        <p>3）<b>数据是不是编的？</b>——是仿真的，但生成逻辑写死在脚本里（用户隐向量、内容质量、位置偏差、时效衰减），所以模型效果的差异是<strong>可解释、可复现</strong>的，不是随机数凑出来的漂亮曲线。</p>
+      </div>
+
+      <h2 id="why"><span class="kicker">WHY</span>为什么搜广推值得系统学</h2>
+      <p class="lead">因为它是"算法离钱最近"的方向，也是少数能把机器学习、工程、业务三者同时练到的场景。</p>
+      <div class="grid c3">
+        <div class="card accent">
+          <div class="ico">🎯</div>
+          <h4>岗位需求真实存在</h4>
+          <p>推荐、搜索、广告三类岗位的 JD 高度重合：召回、排序、特征、A/B、工程。掌握一套，三个方向都能投。</p>
+        </div>
+        <div class="card teal">
+          <div class="ico">🧱</div>
+          <h4>能力可以迁移</h4>
+          <p>用户画像、向量召回、多任务学习、冷启动、样本偏差——这些方法在内容、电商、政务、金融风控里都能复用。</p>
+        </div>
+        <div class="card amber">
+          <div class="ico">📈</div>
+          <h4>效果可量化</h4>
+          <p>CTR、CVR、人均时长、GMV，涨了多少一目了然。做项目时这是最有说服力的证据，也是面试官最爱追问的地方。</p>
+        </div>
+      </div>
+
+      <h2 id="map"><span class="kicker">MAP</span>一张图看清这门课的结构</h2>
+      <p>搜广推不是"一个模型"，而是一条流水线。下面这张图是你两个月里要逐层打通的地图：左边是数据，中间是模型，右边是业务结果，底下是工程与实验。</p>
+
+      <div class="chart">
+        <svg viewBox="0 0 860 360" role="img" aria-label="搜广推能力地图">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#eef0ff"/><stop offset="100%" stop-color="#e6f7f4"/>
+            </linearGradient>
+          </defs>
+          <rect x="14" y="14" width="832" height="332" rx="16" fill="url(#g1)" stroke="#dfe5f5"/>
+          <!-- 数据层 -->
+          <rect x="34" y="40" width="180" height="120" rx="10" fill="#fff" stroke="#c7d2fe"/>
+          <text x="124" y="64" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">① 数据与特征</text>
+          <text x="124" y="86" text-anchor="middle" font-size="10.5" fill="#475467">埋点 / 日志 / 画像</text>
+          <text x="124" y="104" text-anchor="middle" font-size="10.5" fill="#475467">样本构造 · 特征工程</text>
+          <text x="124" y="122" text-anchor="middle" font-size="10.5" fill="#475467">特征穿越 · 线上线下一致</text>
+          <text x="124" y="142" text-anchor="middle" font-size="10.5" fill="#98a2b3">第 1 章</text>
+
+          <!-- 召回 -->
+          <rect x="238" y="40" width="180" height="120" rx="10" fill="#fff" stroke="#c7d2fe"/>
+          <text x="328" y="64" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">② 召回</text>
+          <text x="328" y="86" text-anchor="middle" font-size="10.5" fill="#475467">万级 → 千级</text>
+          <text x="328" y="104" text-anchor="middle" font-size="10.5" fill="#475467">协同过滤 / 双塔 / 图</text>
+          <text x="328" y="122" text-anchor="middle" font-size="10.5" fill="#475467">多路召回 · ANN 检索</text>
+          <text x="328" y="142" text-anchor="middle" font-size="10.5" fill="#98a2b3">第 2 章</text>
+
+          <!-- 排序 -->
+          <rect x="442" y="40" width="180" height="120" rx="10" fill="#fff" stroke="#c7d2fe"/>
+          <text x="532" y="64" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">③ 粗排 / 精排 / 重排</text>
+          <text x="532" y="86" text-anchor="middle" font-size="10.5" fill="#475467">千级 → 百级 → 十级</text>
+          <text x="532" y="104" text-anchor="middle" font-size="10.5" fill="#475467">LR→FM→DeepFM→DIN</text>
+          <text x="532" y="122" text-anchor="middle" font-size="10.5" fill="#475467">多任务 · 多样性打散</text>
+          <text x="532" y="142" text-anchor="middle" font-size="10.5" fill="#98a2b3">第 2 章</text>
+
+          <!-- 业务 -->
+          <rect x="646" y="40" width="180" height="120" rx="10" fill="#fff" stroke="#a7f3d0"/>
+          <text x="736" y="64" text-anchor="middle" font-size="12" font-weight="700" fill="#0d9488">④ 业务与实验</text>
+          <text x="736" y="86" text-anchor="middle" font-size="10.5" fill="#475467">CTR / 时长 / GMV</text>
+          <text x="736" y="104" text-anchor="middle" font-size="10.5" fill="#475467">A/B 实验 · 显著性</text>
+          <text x="736" y="122" text-anchor="middle" font-size="10.5" fill="#475467">离线在线指标鸿沟</text>
+          <text x="736" y="142" text-anchor="middle" font-size="10.5" fill="#98a2b3">第 3 章</text>
+
+          <!-- 箭头 -->
+          <g stroke="#818cf8" stroke-width="2" fill="none">
+            <path d="M214 100 H232" marker-end="url(#a)"/><path d="M418 100 H436"/><path d="M622 100 H640"/>
+          </g>
+          <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 z" fill="#818cf8"/></marker></defs>
+
+          <!-- 工程底座 -->
+          <rect x="34" y="184" width="792" height="62" rx="10" fill="#fff" stroke="#fde68a"/>
+          <text x="430" y="208" text-anchor="middle" font-size="12" font-weight="700" fill="#b45309">⑤ 工程底座：在线服务 / 特征存储 / 模型更新 / 延迟预算 / 降级 / 监控</text>
+          <text x="430" y="230" text-anchor="middle" font-size="10.5" fill="#475467">离线指标好看不等于线上有效——这一层决定你的模型能不能真正"上线"</text>
+
+          <!-- 项目 -->
+          <rect x="34" y="262" width="386" height="66" rx="10" fill="#fff" stroke="#c7d2fe"/>
+          <text x="227" y="286" text-anchor="middle" font-size="12" font-weight="700" fill="#4f46e5">项目一：短视频推荐（互联网标准链路）</text>
+          <text x="227" y="306" text-anchor="middle" font-size="10.5" fill="#475467">双塔召回 + DIN 精排 + 重排，2 万用户 / 31.8 万条曝光</text>
+
+          <rect x="440" y="262" width="386" height="66" rx="10" fill="#fff" stroke="#a7f3d0"/>
+          <text x="633" y="286" text-anchor="middle" font-size="12" font-weight="700" fill="#0d9488">项目二：政务「政策找人」（行业落地）</text>
+          <text x="633" y="306" text-anchor="middle" font-size="10.5" fill="#475467">规则过滤 + 语义召回 + 可解释 + 公平性评估</text>
+        </svg>
+        <div class="cap">阅读顺序建议：① → ② → ③ → ⑤ → 项目。第 ④ 部分贯穿始终，每章都会回到指标。</div>
+      </div>
+
+      <h2 id="modules"><span class="kicker">MODULES</span>九个模块，各自解决什么问题</h2>
+      <div class="mod-grid">
+        <a class="mod" href="basics.html">
+          <span class="n">MODULE 01</span><b>全景 · 概念 · 数据</b>
+          <p>搜索/广告/推荐到底差在哪；eCPM、CTR、CVR 是什么；一条曝光日志长什么样；特征怎么从日志里长出来。</p>
+          <span class="go">进入第 1 章 →</span>
+        </a>
+        <a class="mod" href="models.html">
+          <span class="n">MODULE 02</span><b>召回与排序模型</b>
+          <p>ItemCF、双塔、ANN；从 LR 到 FM、DeepFM、DIN、MMOE。每个模型都回答三个问题：为什么出现、解决什么、坑在哪。</p>
+          <span class="go">进入第 2 章 →</span>
+        </a>
+        <a class="mod" href="system.html">
+          <span class="n">MODULE 03</span><b>工程落地与踩坑</b>
+          <p>100ms 延迟怎么分配；特征为什么线上线下不一致；冷启动、信息茧房、位置偏差怎么处理；指标跌了从哪查。</p>
+          <span class="go">进入第 3 章 →</span>
+        </a>
+        <a class="mod" href="project-1.html">
+          <span class="n">PROJECT 01</span><b>短视频推荐系统</b>
+          <p>完整复现召回 + 排序 + 重排，含 5 个模型的真实离线指标、召回率对比、校准曲线与工程部署方案。</p>
+          <span class="go">查看项目 →</span>
+        </a>
+        <a class="mod" href="project-2.html">
+          <span class="n">PROJECT 02</span><b>政务政策找人</b>
+          <p>规则优先、语义兜底、可解释与公平性。适合讲"行业理解 + 合规意识"，和互联网项目形成差异化。</p>
+          <span class="go">查看项目 →</span>
+        </a>
+        <a class="mod" href="industry.html">
+          <span class="n">TOPIC 01</span><b>行业与商业全景</b>
+          <p>平台靠什么赚钱、四方关系怎么转；CPM/CPC/oCPX/RTB 的计费差异；六类行业的指标口径与合规红线。</p>
+          <span class="go">进入 T1 →</span>
+        </a>
+        <a class="mod" href="advanced.html">
+          <span class="n">TOPIC 02</span><b>进阶模型专题</b>
+          <p>DIN→DIEN→SIM 序列主线、LightGCN/PinSage 图模型、ESMM/MMOE/PLE 多目标、生成式推荐与 LLM4Rec 边界。</p>
+          <span class="go">进入 T2 →</span>
+        </a>
+        <a class="mod" href="interview.html">
+          <span class="n">MODULE 04</span><b>面试拷问与术语</b>
+          <p>60 道高频追问、52 条术语速查、两个项目的 STAR 讲法。用来检验自己是不是真的会了。</p>
+          <span class="go">进入冲刺 →</span>
+        </a>
+      </div>
+
+      <h2 id="plan"><span class="kicker">PLAN</span>8 周：每周都有可验收的产出</h2>
+      <p>不要"看完再说"。每周结束必须有一个能展示的东西——一段代码、一张图、一个数字。下面这张表就是验收标准。</p>
+      <div class="table-wrap">
+        <table class="week-table">
+          <thead><tr><th>周次</th><th>学习内容</th><th>本周产出（验收标准）</th><th>投入</th></tr></thead>
+          <tbody>
+            <tr><td>W1</td><td>行业全景、指标体系、链路分层；跑通项目一的数据生成脚本</td><td>能用自己的话讲清"召回和排序为什么分开"；能画出 4 层链路图</td><td>8h</td></tr>
+            <tr><td>W2</td><td>日志与样本、特征工程、时间切分、特征穿越</td><td>从仿真日志里造出 10 个特征，写出特征说明表（口径/更新频率/来源）</td><td>10h</td></tr>
+            <tr><td>W3</td><td>协同过滤、双塔、ANN；召回评估</td><td>实现 ItemCF 与双塔召回，产出 Recall@100 / 覆盖率对比表</td><td>10h</td></tr>
+            <tr><td>W4</td><td>LR → FM → DeepFM；排序评估 AUC/LogLoss/校准</td><td>复现 4 个排序模型，AUC 提升可解释；画出校准曲线</td><td>12h</td></tr>
+            <tr><td>W5</td><td>DIN、多任务、重排；生成式推荐边界</td><td>给项目一加上行为序列建模，说明涨点来自哪里</td><td>10h</td></tr>
+            <tr><td>W6</td><td>在线架构、特征服务、延迟预算、A/B 实验</td><td>写出项目一的部署方案：接口、缓存、超时、降级、监控指标</td><td>10h</td></tr>
+            <tr><td>W7</td><td>项目二（最小闭环）：规则引擎、语义召回、可解释、公平性</td><td>跑通规则判定 + 语义排序，产出"漏推/误推"评估表（完整 6 周版本见项目页）</td><td>10h</td></tr>
+            <tr><td>W8</td><td>复盘、面试拷问、简历包装（<a href="interview.html">第 5 部分</a>）</td><td>两个项目各准备 3 分钟讲法 + 10 个追问答案</td><td>8h</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <p><b>时间不够怎么办？</b>只做 W1–W5 + 项目一，你已经有能力面试初级推荐算法岗；项目二是加分项，用来讲"业务理解"和"合规"。不要两个都半途而废。</p>
+      </div>
+
+      <div class="callout tip">
+        <p><b>八周之后往哪走？</b>两个拓展专题是"第二遍读"的材料，不占八周主线：<a href="industry.html">T1 行业与商业全景</a>补的是"为什么这么做"——商业模式、计费方式、六类行业差异、指标口径与角色协作；<a href="advanced.html">T2 进阶模型专题</a>补的是"还能怎么做"——序列、图、多目标、生成式与 LLM4Rec 的适用边界。建议在 W6 之后穿插读 T1，在准备面试前读 T2。</p>
+      </div>
+
+      <h2 id="projects"><span class="kicker">PROJECTS</span>两个项目，两种叙事</h2>
+      <div class="two-col">
+        <div class="card accent">
+          <span class="pill">项目一 · 互联网</span>
+          <h4 style="margin-top:10px">"抖风"短视频推荐系统</h4>
+          <p>2 万用户、5000 条视频、31.8 万条曝光日志。从热门/ItemCF/双塔三路召回，到 LR/FM/DeepFM/DIN 四代排序模型，再到多样性与打散重排。</p>
+          <p class="small">亮点：<b>指标是真的跑出来的</b>。AUC 从 0.500（均值基线）→ 0.847（LR）→ 0.858（DIN）；双塔 Recall@100 11.3%，热门只有 9.7%。每一个数字都能在脚本里复现。</p>
+          <p class="small">适合回答：你怎么做召回？为什么 DIN 比 DeepFM 好？离线涨了线上一定涨吗？</p>
+        </div>
+        <div class="card teal">
+          <span class="pill g">项目二 · 政务/行业</span>
+          <h4 style="margin-top:10px">惠企政策"政策找人"平台</h4>
+          <p>8000 家企业、120 条政策。核心不是模型多深，而是<b>规则优先、语义兜底、结果可解释、过程可审计</b>。</p>
+          <p class="small">亮点：规则引擎召回率 100%、精确率 91.7%；规则+语义召回把 Recall@10 从 67.8% 提到 78.7%，误推率从 21% 降到 7.8%；并给出不同规模企业的曝光公平性分析。</p>
+          <p class="small">适合回答：政务场景为什么不能纯用大模型？漏推和误推哪个更严重？怎么让企业信这个推荐？</p>
+        </div>
+      </div>
+
+      <h2 id="prereq"><span class="kicker">PREREQ</span>开始之前，你只需要这些</h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>必须具备</h4>
+          <ul class="checklist">
+            <li>Python 基础（能读懂函数、类、pandas 的 groupby）</li>
+            <li>机器学习常识（训练/测试、过拟合、AUC 大概是什么）</li>
+            <li>会用命令行跑脚本、装依赖</li>
+          </ul>
+          <p class="small">上面这些词有一个说不清？先看 <a href="basics.html#primer"><b>第 1 章的"读前 10 分钟补课"</b></a>，那里用一张表 + 三个公式把 embedding、sigmoid、AUC 这些词先讲成人话。</p>
+        </div>
+        <div class="card">
+          <h4>不需要（会在文中补）</h4>
+          <ul class="checklist">
+            <li>深度学习框架细节——代码都是最小实现</li>
+            <li>大数据组件（Spark/Flink）——只讲它们在链路里的位置</li>
+            <li>后端工程经验——部署部分给架构和伪代码</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout tip">
+        <p><b>怎么读最有效：</b>每章先读"一句话结论"和图表，再回头读推导；看到代码先别抄，先猜它要解决什么问题。每章末尾的"常见误区"至少读两遍——面试里被挂，多半是这些地方露馅。</p>
+        <p><b>卡住了怎么办：</b>遇到不认识的词，先翻 <a href="interview.html#terms">术语速查（52 条）</a>，再回到原文；
+          公式看不懂时，先看这一节"为什么需要它"，别死磕推导。术语速查的定位是"随时可查的字典"，不需要通读。</p>
+      </div>
+
+      <h2 id="repro"><span class="kicker">REPRODUCE</span>关于仿真数据与复现</h2>
+      <p>两个项目的数据都由脚本生成，没有使用任何真实用户数据，可以放心写进简历和公开分享。生成逻辑遵循真实业务里的因果结构：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>仿真机制</th><th>对应真实业务</th><th>为什么重要</th></tr></thead>
+          <tbody>
+            <tr><td>用户隐向量 × 内容隐向量</td><td>用户兴趣与内容主题的匹配</td><td>让"个性化"真的有效，模型才有可学信号</td></tr>
+            <tr><td>位置 1~4 的点击加成</td><td>首位偏差（position bias）</td><td>解释为什么离线 AUC 会虚高、线上要 debias</td></tr>
+            <tr><td>发布时间衰减</td><td>内容时效性</td><td>让"新鲜度特征"有必要存在</td></tr>
+            <tr><td>政策硬条件 + 字段缺失</td><td>政务数据质量与合规底线</td><td>证明"规则优先"不是落后，而是业务要求</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">复现命令：<code>python scripts/gen_project1.py</code>、<code>python scripts/gen_project2.py</code>。依赖：numpy、pandas、scikit-learn、torch（CPU 即可）。生成后的指标写入 <code>data/p1_metrics.json</code> 与 <code>data/p2_metrics.json</code>，页面里的图全部由这些文件驱动。</p>
+
+      <h3>数据与脚本：点开就能看，不用信我</h3>
+      <p>下面的文件都在站点目录里，点开可以直接查看原始数据长什么样（CSV 前几百行、指标 JSON 全文）。
+        想改仿真参数，就直接编辑 <code>scripts/</code> 里的生成脚本重跑。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>文件</th><th>是什么</th><th>建议怎么用</th></tr></thead>
+          <tbody>
+            <tr><td><a href="data/p1_events_sample.csv">p1_events_sample.csv</a></td><td>项目一曝光日志抽样 500 行</td><td>先看日志长什么样：一行一次曝光，带点击/完播/播放比例</td></tr>
+            <tr><td><a href="data/p1_items.csv">p1_items.csv</a></td><td>项目一 5000 条视频属性</td><td>看品类、时长、质量分、<code>ctr_7d</code> 这些特征的真面目</td></tr>
+            <tr><td><a href="data/p1_metrics.json">p1_metrics.json</a></td><td>项目一全部离线指标</td><td>页面里每张图的数字都能在这里找到出处</td></tr>
+            <tr><td><a href="data/p2_enterprises.csv">p2_enterprises.csv</a></td><td>项目二 8000 家企业档案</td><td>看行业、规模、地区、营收等字段</td></tr>
+            <tr><td><a href="data/p2_policies.csv">p2_policies.csv</a></td><td>项目二 120 条政策原文</td><td>看申报条件是怎么写成结构化字段的</td></tr>
+            <tr><td><a href="data/p2_metrics.json">p2_metrics.json</a></td><td>项目二全部评估指标</td><td>规则基线、召回对比、公平性、基尼系数</td></tr>
+            <tr><td><a href="scripts/gen_project1.py">gen_project1.py</a></td><td>项目一仿真 + 建模脚本</td><td>改 <code>N_USERS</code> / 隐向量维度，重跑看指标怎么变</td></tr>
+            <tr><td><a href="scripts/gen_project2.py">gen_project2.py</a></td><td>项目二仿真 + 评估脚本</td><td>改缺失率、命中权重，看漏推/误推怎么变</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout tip">
+        <p><b>面试时最有说服力的一句：</b>"数据是我仿真的，生成机制和评估脚本都在仓库里，您可以现场跑一遍。"
+          比"我用过某公开数据集"更能证明你理解数据的因果结构。</p>
+      </div>
+
+      <div class="pager">
+        <a href="basics.html"><span>下一篇</span><b>01 · 搜广推全景、概念体系与数据 →</b></a>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="assets/js/main.js"></script>
+</body>
+</html>
